@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Loop for input
-    unsigned char frame[FRAME_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
+    unsigned char frame[FRAME_SIZE] = {0}; // +1: Save space for the final '\0' char
     unsigned char buf[1];
     int second_flag = FALSE; // Check if second flag is the next to be read
     int idx = 0;
@@ -122,25 +122,13 @@ int main(int argc, char *argv[])
         }
     }
 
-    frame[5] = '\0';
-
-    printf("var = 0x%02X\n", frame[0]);
-    printf("var = 0x%02X\n", frame[1]);
-    printf("var = 0x%02X\n", frame[2]);
-    printf("var = 0x%02X\n", frame[3]);
-    printf("var = 0x%02X\n", frame[4]);
-
     unsigned char bcc = frame[1] ^ frame[2];
-
-    printf("BCC = 0x%02X\n", bcc);
 
     if (bcc == frame[3]) {
         // Everything good!
         unsigned char send_frame[5] = {FLAG, SS_AR, UA, SS_AR ^ UA, FLAG};
 
         int bytes = write(fd, send_frame, FRAME_SIZE);
-
-        printf("Wrote %d bytes\n", bytes);
 
         // Wait until all bytes have been written to the serial port
         sleep(1);

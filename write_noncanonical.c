@@ -104,12 +104,11 @@ int main(int argc, char *argv[])
     // buf[5] = '\n';
 
     int bytes = write(fd, buf, FRAME_SIZE);
-    printf("%d bytes written\n", bytes);
     
-    unsigned char read_frame[FRAME_SIZE + 1] = {0};
+    unsigned char read_frame[FRAME_SIZE] = {0};
     unsigned char read_buf[1];
     int second_flag = FALSE; // Checks if second flag is the next to be read
-	int idx = 0;
+    int idx = 0;
     
     while (STOP == FALSE) {
 		int bytes = read(fd, read_buf, 1);
@@ -130,12 +129,6 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	
-	printf("var = 0x%02X\n", read_frame[0]);
-	printf("var = 0x%02X\n", read_frame[1]);
-	printf("var = 0x%02X\n", read_frame[2]);
-	printf("var = 0x%02X\n", read_frame[3]);
-	printf("var = 0x%02X\n", read_frame[4]);
 	
 	int bcc = read_frame[1] ^ read_frame[2];
 	
