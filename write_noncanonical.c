@@ -33,7 +33,7 @@ int check_ua(unsigned char *answer){
     if(answer[0] == FLAG &&
         answer[1] == A_RECV && 
         answer[2] == C_UA &&
-        answer[3] == A_RECV ^ C_UA && 
+        answer[3] == (A_RECV ^ C_UA) && 
         answer[4] == FLAG)
     return TRUE;
     return FALSE;
@@ -121,7 +121,10 @@ int main(int argc, char *argv[]){
 
     while (STOP == FALSE)
     {
-        int bytes = read(fd, buf, BUF_SIZE);
+        if(read(fd, buf, BUF_SIZE) < 0){
+            perror("Error read UA command");
+            exit(-1);
+        }
 
         if(check_ua(buf)){
             printf("Connection established\n");
