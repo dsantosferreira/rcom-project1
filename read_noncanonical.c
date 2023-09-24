@@ -19,15 +19,33 @@
 #define FALSE 0
 #define TRUE 1
 
-#define FRAME_SIZE 5
+#define BUF_SIZE 5
 
-#define FLAG 0x7E
-#define SS_AR 0x03
-#define SR_AS 0x01
-#define SET 0x03
-#define UA 0x07
+#define FLAG    0x7E
+#define A_SEND  0x03
+#define A_RECV  0x01
+#define C_SET   0x03
+#define C_UA    0x07
 
 volatile int STOP = FALSE;
+
+int check_set(unsigned char *answer){
+    if(answer[0] == FLAG &&
+        answer[1] == A_SEND && 
+        answer[2] == C_SET &&
+        answer[3] == A_SEND ^ C_SET && 
+        answer[4] == FLAG)
+    return TRUE;
+    return FALSE;
+}
+
+void print_answer(unsigned char *answer){
+    printf("flag =  0x%02X\n", answer[0]);
+    printf("a =     0x%02X\n", answer[1]);
+    printf("c =     0x%02X\n", answer[2]);
+    printf("xor ac= 0x%02X\n", answer[3]);
+    printf("flag =  0x%02X\n", answer[4]);
+}
 
 int main(int argc, char *argv[])
 {
@@ -95,50 +113,33 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     // Loop for input
-    unsigned char frame[FRAME_SIZE] = {0}; // +1: Save space for the final '\0' char
-    unsigned char buf[1];
-    int second_flag = FALSE; // Check if second flag is the next to be read
-    int idx = 0;
+    unsigned char buf[BUF_SIZE] = {0};
 
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
-        int bytes = read(fd, buf, 1);
+        int bytes = read(fd, buf, BUF_SIZE);
 
-        if (bytes == -1) {
-            perror("read");
-            exit(-1);
-        }
-
-        frame[idx++] = buf[0]; // Set end of string to '\0', so we can printf
-
-        if (buf[0] == FLAG) {
-            if (second_flag) {
-                STOP = TRUE;
-            }
-            else {
-                second_flag = TRUE;
-            }
-        }
+        if(check_set(buf)) STOP = TRUE;
     }
 
-    unsigned char bcc = frame[1] ^ frame[2];
 
-    if (bcc == frame[3]) {
-        // Everything good!
-        unsigned char send_frame[5] = {FLAG, SS_AR, UA, SS_AR ^ UA, FLAG};
-
-        int bytes = write(fd, send_frame, FRAME_SIZE);
-
-        // Wait until all bytes have been written to the serial port
-        sleep(1);
+    buf[0] = FLAG;
+    buf[1] = A_RECV;
+    buf[2] = C_UA;
+    buf[3] = buf[1] ^ buf[2];
+    buf[4] = FLAG;
+        
+    int bytes; 
+    if((bytes = write(fd, buf, BUF_SIZE)) < 0){
+        perror("Error write ua command");
+        exit(-1);
     }
-    else {
-        // Error detected in the frame;
-    }
+    printf("%d bytes written\n", bytes);
 
-    // The while() cycle should be changed in order to respect the specifications
-    // of the protocol indicated in the Lab guide
+    // Wait until all bytes have been written to the serial port
+    sleep(1);
+    printf("Connection established\n");
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
@@ -151,3 +152,5 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
+
