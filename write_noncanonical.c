@@ -101,7 +101,6 @@ int main(int argc, char *argv[]){
 
     printf("New termios structure set\n");
 
-
     // Create string to send
     unsigned char buf[BUF_SIZE] = {0};
     buf[0] = FLAG;
