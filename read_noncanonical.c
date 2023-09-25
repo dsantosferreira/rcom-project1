@@ -39,12 +39,10 @@ enum state_set{
 
 enum state_set enum_state_set = START;
 
-void print_answer(unsigned char *answer){
-    printf("flag =  0x%02X\n", answer[0]);
-    printf("a =     0x%02X\n", answer[1]);
-    printf("c =     0x%02X\n", answer[2]);
-    printf("xor ac= 0x%02X\n", answer[3]);
-    printf("flag =  0x%02X\n", answer[4]);
+void print_answer(unsigned char *answer, int n){
+    for(int i = 0; i < n; i++) {
+        printf("answer[%d] = 0x%02X\n", i, answer[i]);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -82,7 +80,7 @@ int main(int argc, char *argv[])
     }
 
     // Clear struct for new port settings
-    memset(&newtio, 0, sizeof(newtio));
+    memset(&newtio, 0, sizeof(newtio)); // is memset_s better?
 
     newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
@@ -114,11 +112,11 @@ int main(int argc, char *argv[])
 
     // Loop for input
     unsigned char buf[BUF_SIZE] = {0};
+    unsigned char A, C;
+    int bytes;
 
     while (enum_state_set != STOP)
     {
-        int bytes;
-        unsigned char A, C;
         if((bytes = read(fd, buf, BUF_SIZE)) < 0){ 
             perror("Error read SET command");
             exit(-1);
@@ -146,7 +144,7 @@ int main(int argc, char *argv[])
                 else enum_state_set = START;
                 break;
             case C_RCV:
-                if(buf[0] == C ^ A) enum_state_set = BCC_OK;
+                if(buf[0] == (C ^ A)) enum_state_set = BCC_OK; 
                 else if(buf[0] == FLAG) enum_state_set = FLAG_RCV;
                 else enum_state_set = START;
                 break;
@@ -167,12 +165,10 @@ int main(int argc, char *argv[])
     frame_buf[3] = frame_buf[1] ^ frame_buf[2];
     frame_buf[4] = FLAG;
         
-    int bytes; 
-    if((bytes = write(fd, frame_buf, FRAME_SIZE)) < 0){
+    if(write(fd, frame_buf, FRAME_SIZE) < 0){
         perror("Error write UA command");
         exit(-1);
     }
-    printf("%d bytes written\n", bytes);
 
     // Wait until all bytes have been written to the serial port
     sleep(1);

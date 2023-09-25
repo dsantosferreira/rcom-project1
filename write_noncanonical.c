@@ -1,4 +1,6 @@
 // Write to serial port in non-canonical mode
+//
+// Modified by: Eduardo Nuno Almeida [enalmeida@fe.up.pt]
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -38,14 +40,14 @@ enum state_ua{
     STOP
 };
 
-int horaCertaIrmao = FALSE;
+int alarmEnabled = FALSE;
 int alarmCount = 0;
 enum state_ua enum_state_ua = START;
 
 void alarmHandler(int signal)
 {
     alarmCount++;
-    horaCertaIrmao = TRUE;
+    alarmEnabled = TRUE;
     printf("Alarm count: %d\n", alarmCount);
 }
 
@@ -54,23 +56,20 @@ void alarmDisable()
     alarm(0);
 }
 
-void print_answer(unsigned char *answer){
-    printf("flag =  0x%02X\n", answer[0]);
-    printf("a =     0x%02X\n", answer[1]);
-    printf("c =     0x%02X\n", answer[2]);
-    printf("xor ac= 0x%02X\n", answer[3]);
-    printf("flag =  0x%02X\n", answer[4]);
+void print_answer(unsigned char *answer, int n){
+    for(int i = 0; i < n; i++) {
+        printf("answer[%d] = 0x%02X\n", i, answer[i]);
+    }
 }
 
 void send_SET_command(int fd)
 {
-    printf("Call send SET command\n");
     // SET command
     unsigned char buf[FRAME_SIZE] = {FLAG, A_SEND, C_SET, 0, FLAG};
     buf[3] = buf[1] ^ buf[2];
     
     int bytes;
-    if((bytes = write(fd, buf, FRAME_SIZE)) < 0)
+    if(write(fd, buf, FRAME_SIZE) < 0)
     {
         perror("Error write send command");
         exit(-1);
@@ -147,9 +146,9 @@ int main(int argc, char *argv[]){
 
     send_SET_command(fd);
 
+    unsigned char A, C;
     while (enum_state_ua != STOP && alarmCount < MAX_RET_ATTEMPTS)
     {
-        unsigned char A, C;
         unsigned char buf[BUF_SIZE] = {0};
         int bytes;
         // printf("line 147\n");
@@ -181,7 +180,7 @@ int main(int argc, char *argv[]){
                 else enum_state_ua = START;
                 break;
             case C_RCV:
-                if(buf[0] == C ^ A) enum_state_ua = BCC_OK;
+                if(buf[0] == (C ^ A)) enum_state_ua = BCC_OK;
                 else if(buf[0] == FLAG) enum_state_ua = FLAG_RCV;
                 else enum_state_ua = START;
                 break;
@@ -201,9 +200,9 @@ int main(int argc, char *argv[]){
             alarmDisable();
         }
 
-        if(horaCertaIrmao)
+        if(alarmEnabled)
         {
-            horaCertaIrmao = FALSE;
+            alarmEnabled = FALSE;
             alarm(3);
             send_SET_command(fd);
             enum_state_ua = START;
