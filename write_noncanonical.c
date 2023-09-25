@@ -18,7 +18,8 @@
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 5
+#define BUF_SIZE 1
+#define FRAME_SIZE 5
 
 #define FLAG    0x7E
 #define A_SEND  0x03
@@ -28,9 +29,18 @@
 
 #define MAX_RET_ATTEMPTS 3 // Maximum number of retransmission attempts
 
-volatile int STOP = FALSE;
+enum state_ua{
+    START, 
+    FLAG_RCV,
+    A_RCV,
+    C_RCV,
+    BCC_OK,
+    STOP
+};
+
 int horaCertaIrmao = FALSE;
 int alarmCount = 0;
+enum state_ua enum_state_ua = START;
 
 void alarmHandler(int signal)
 {
@@ -52,26 +62,15 @@ void print_answer(unsigned char *answer){
     printf("flag =  0x%02X\n", answer[4]);
 }
 
-int check_UA_command(unsigned char *answer)
-{
-    if(answer[0] == FLAG &&
-        answer[1] == A_RECV && 
-        answer[2] == C_UA &&
-        answer[3] == (A_RECV ^ C_UA) && 
-        answer[4] == FLAG)
-    return TRUE;
-    return FALSE;
-}
-
 void send_SET_command(int fd)
 {
     printf("Call send SET command\n");
     // SET command
-    unsigned char buf[BUF_SIZE] = {FLAG, A_SEND, C_SET, 0, FLAG};
+    unsigned char buf[FRAME_SIZE] = {FLAG, A_SEND, C_SET, 0, FLAG};
     buf[3] = buf[1] ^ buf[2];
     
     int bytes;
-    if((bytes = write(fd, buf, BUF_SIZE)) < 0)
+    if((bytes = write(fd, buf, FRAME_SIZE)) < 0)
     {
         perror("Error write send command");
         exit(-1);
@@ -121,7 +120,7 @@ int main(int argc, char *argv[]){
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
+    newtio.c_cc[VTIME] = 30; // Inter-character timer unused
     newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
@@ -148,21 +147,58 @@ int main(int argc, char *argv[]){
 
     send_SET_command(fd);
 
-    while (STOP == FALSE && alarmCount < MAX_RET_ATTEMPTS)
+    while (enum_state_ua != STOP && alarmCount < MAX_RET_ATTEMPTS)
     {
+        unsigned char A, C;
         unsigned char buf[BUF_SIZE] = {0};
+        int bytes;
         // printf("line 147\n");
-        if(read(fd, buf, BUF_SIZE) < 0)
+        if((bytes = read(fd, buf, BUF_SIZE)) < 0)
         {
             perror("Error read UA command");
             exit(-1);
         }
+        if(bytes > 0){
+            switch (enum_state_ua)
+            {
+            case START:
+                if(buf[0] == FLAG) enum_state_ua = FLAG_RCV;
+                break;
+            case FLAG_RCV:
+                if(buf[0] == FLAG) continue;
+                if(buf[0] == A_SEND){
+                    A = buf[0];
+                    enum_state_ua = A_RCV;
+                }
+                else enum_state_ua = START;
+                break;
+            case A_RCV:
+                if(buf[0] == C_UA) {
+                    enum_state_ua = C_RCV;
+                    C = buf[0];
+                }
+                else if(buf[0] == FLAG) enum_state_ua = FLAG_RCV;
+                else enum_state_ua = START;
+                break;
+            case C_RCV:
+                if(buf[0] == C ^ A) enum_state_ua = BCC_OK;
+                else if(buf[0] == FLAG) enum_state_ua = FLAG_RCV;
+                else enum_state_ua = START;
+                break;
+            case BCC_OK:
+                if(buf[0] == FLAG) enum_state_ua = STOP;
+                else enum_state_ua = START;
+                break;      
+            default:
+                enum_state_ua = START;
+            }
+        }
 
-        if(check_UA_command(buf))
+
+        if(enum_state_ua == STOP)
         {
             printf("Connection established\n");
             alarmDisable();
-            STOP = TRUE;
         }
 
         if(horaCertaIrmao)
@@ -170,6 +206,7 @@ int main(int argc, char *argv[]){
             horaCertaIrmao = FALSE;
             alarm(3);
             send_SET_command(fd);
+            enum_state_ua = START;
         }
     }
     
