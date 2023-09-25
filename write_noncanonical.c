@@ -64,13 +64,12 @@ void print_answer(unsigned char *answer){
 
 void send_SET_command(int fd)
 {
-    printf("Call send SET command\n");
     // SET command
     unsigned char buf[FRAME_SIZE] = {FLAG, A_SEND, C_SET, 0, FLAG};
     buf[3] = buf[1] ^ buf[2];
     
     int bytes;
-    if((bytes = write(fd, buf, FRAME_SIZE)) < 0)
+    if(write(fd, buf, FRAME_SIZE) < 0)
     {
         perror("Error write send command");
         exit(-1);
@@ -147,9 +146,9 @@ int main(int argc, char *argv[]){
 
     send_SET_command(fd);
 
+    unsigned char A, C;
     while (enum_state_ua != STOP && alarmCount < MAX_RET_ATTEMPTS)
     {
-        unsigned char A, C;
         unsigned char buf[BUF_SIZE] = {0};
         int bytes;
         // printf("line 147\n");
@@ -181,7 +180,7 @@ int main(int argc, char *argv[]){
                 else enum_state_ua = START;
                 break;
             case C_RCV:
-                if(buf[0] == C ^ A) enum_state_ua = BCC_OK;
+                if(buf[0] == (C ^ A)) enum_state_ua = BCC_OK;
                 else if(buf[0] == FLAG) enum_state_ua = FLAG_RCV;
                 else enum_state_ua = START;
                 break;
