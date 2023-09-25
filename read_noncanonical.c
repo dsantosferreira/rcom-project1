@@ -33,7 +33,7 @@ int check_set(unsigned char *answer){
     if(answer[0] == FLAG &&
         answer[1] == A_SEND && 
         answer[2] == C_SET &&
-        answer[3] == A_SEND ^ C_SET && 
+        answer[3] == (A_SEND ^ C_SET) && 
         answer[4] == FLAG)
     return TRUE;
     return FALSE;
@@ -118,8 +118,10 @@ int main(int argc, char *argv[])
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
-        int bytes = read(fd, buf, BUF_SIZE);
-
+        if(read(fd, buf, BUF_SIZE) < 0){
+            perror("Error read SET command");
+            exit(-1);
+        }
         if(check_set(buf)) STOP = TRUE;
     }
 
@@ -132,7 +134,7 @@ int main(int argc, char *argv[])
         
     int bytes; 
     if((bytes = write(fd, buf, BUF_SIZE)) < 0){
-        perror("Error write ua command");
+        perror("Error write UA command");
         exit(-1);
     }
     printf("%d bytes written\n", bytes);
@@ -152,5 +154,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-
