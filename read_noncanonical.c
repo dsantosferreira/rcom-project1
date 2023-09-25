@@ -39,12 +39,10 @@ enum state_set{
 
 enum state_set enum_state_set = START;
 
-void print_answer(unsigned char *answer){
-    printf("flag =  0x%02X\n", answer[0]);
-    printf("a =     0x%02X\n", answer[1]);
-    printf("c =     0x%02X\n", answer[2]);
-    printf("xor ac= 0x%02X\n", answer[3]);
-    printf("flag =  0x%02X\n", answer[4]);
+void print_answer(unsigned char *answer, int n){
+    for(int i = 0; i < n; i++) {
+        printf("answer[%d] = 0x%02X\n", i, answer[i]);
+    }
 }
 
 int main(int argc, char *argv[])

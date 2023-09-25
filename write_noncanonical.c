@@ -1,4 +1,6 @@
 // Write to serial port in non-canonical mode
+//
+// Modified by: Eduardo Nuno Almeida [enalmeida@fe.up.pt]
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -38,14 +40,14 @@ enum state_ua{
     STOP
 };
 
-int horaCertaIrmao = FALSE;
+int alarmEnabled = FALSE;
 int alarmCount = 0;
 enum state_ua enum_state_ua = START;
 
 void alarmHandler(int signal)
 {
     alarmCount++;
-    horaCertaIrmao = TRUE;
+    alarmEnabled = TRUE;
     printf("Alarm count: %d\n", alarmCount);
 }
 
@@ -54,12 +56,10 @@ void alarmDisable()
     alarm(0);
 }
 
-void print_answer(unsigned char *answer){
-    printf("flag =  0x%02X\n", answer[0]);
-    printf("a =     0x%02X\n", answer[1]);
-    printf("c =     0x%02X\n", answer[2]);
-    printf("xor ac= 0x%02X\n", answer[3]);
-    printf("flag =  0x%02X\n", answer[4]);
+void print_answer(unsigned char *answer, int n){
+    for(int i = 0; i < n; i++) {
+        printf("answer[%d] = 0x%02X\n", i, answer[i]);
+    }
 }
 
 void send_SET_command(int fd)
@@ -200,9 +200,9 @@ int main(int argc, char *argv[]){
             alarmDisable();
         }
 
-        if(horaCertaIrmao)
+        if(alarmEnabled)
         {
-            horaCertaIrmao = FALSE;
+            alarmEnabled = FALSE;
             alarm(3);
             send_SET_command(fd);
             enum_state_ua = START;
