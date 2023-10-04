@@ -30,6 +30,7 @@
 #define C_DISC  0x0B
 
 #define MAX_RET_ATTEMPTS 3 // Maximum number of retransmission attempts
+#define TIMEOUT 3
 
 #define TRANSMITTER 0
 #define RECEIVER 1
@@ -62,7 +63,9 @@ void alarmDisable();
 
 void print_answer(unsigned char *answer, int n);
 
-int send_packet_command(int fd, unsigned char C, unsigned char A);
+int send_packet_command(int fd, unsigned char A, unsigned char C);
+
+int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED); // aux function with while loop.
 
 int connectFD(const char * port); // /dev/ttySx 
 

@@ -16,6 +16,8 @@ void alarmHandler(int signal)
 void alarmDisable()
 {
     alarm(0);
+    alarmEnabled = FALSE;
+    alarmCount = 0;
 }
 
 void print_answer(unsigned char *answer, int n)
@@ -50,11 +52,11 @@ int llopen(const char * port, unsigned char flag)
     if(flag == TRANSMITTER){
 
         (void)signal(SIGALRM, alarmHandler);
-        alarm(3); // set alarm to 3 seconds.
+        alarm(TIMEOUT); // set alarm to 3 seconds.
 
         if(send_packet_command(fd, A_SEND, C_SET)) return -1;
 
-        while (enum_state != STOP && alarmCount < MAX_RET_ATTEMPTS)
+        while (enum_state != STOP && alarmCount <= MAX_RET_ATTEMPTS)
         {
             //unsigned char buf[BUF_SIZE] = {0};
             unsigned char byte = 0;
@@ -63,7 +65,7 @@ int llopen(const char * port, unsigned char flag)
             if((bytes = read(fd, &byte, sizeof(byte))) < 0)
             {
                 perror("Error read UA command");
-                exit(-1);
+                return -1;
             }
             if(bytes > 0){
                 switch (enum_state)
@@ -104,7 +106,7 @@ int llopen(const char * port, unsigned char flag)
             if(alarmEnabled)
             {
                 alarmEnabled = FALSE;
-                alarm(3);
+                alarm(TIMEOUT);
                 if(send_packet_command(fd, A_SEND, C_SET)) return -1;
                 enum_state = START;
             }
@@ -112,46 +114,7 @@ int llopen(const char * port, unsigned char flag)
     }
     if(flag == RECEIVER){
         //unsigned char buf[BUF_SIZE] = {0};
-        unsigned char byte = 0;
-        int bytes;
-
-        while (enum_state != STOP)
-        {
-            if((bytes = read(fd, &byte, sizeof(byte))) < 0){ 
-                perror("Error read SET command");
-                exit(-1);
-            }
-            //printf("Was readed: %hhx\n", byte);
-            if(bytes > 0){ // Uncesssary with time = 0 and min > 0
-                switch (enum_state)
-                {
-                case START:
-                    if(byte == FLAG) enum_state = FLAG_RCV;
-                    break;
-                case FLAG_RCV:
-                    if(byte == FLAG) continue;
-                    if(byte == A_SEND) enum_state = A_RCV;
-                    else enum_state = START;
-                    break;
-                case A_RCV:
-                    if(byte == C_SET) enum_state = C_RCV;
-                    else if(byte == FLAG) enum_state = FLAG_RCV;
-                    else enum_state = START;
-                    break;
-                case C_RCV:
-                    if(byte == (C_SET ^ A_SEND)) enum_state = BCC_OK; 
-                    else if(byte == FLAG) enum_state = FLAG_RCV;
-                    else enum_state = START;
-                    break;
-                case BCC_OK:
-                    if(byte == FLAG) enum_state = STOP;
-                    else enum_state = START;
-                    break;      
-                default:
-                    enum_state = START;
-                }
-            }
-        }
+        if(receivePacket(fd, A_SEND, C_SET)) return -1;
 
         if(send_packet_command(fd, A_SEND, C_UA)) return -1;
 
@@ -168,11 +131,11 @@ int llclose(int fd, unsigned char flag) // temos que fazer aqui a retrnsmission?
     if(flag == TRANSMITTER)
     {
         (void)signal(SIGALRM, alarmHandler);
-        alarm(3); // set alarm to 3 seconds.
+        alarm(TIMEOUT); // set alarm to 3 seconds.
 
         if(send_packet_command(fd, A_SEND, C_DISC)) return -1;
 
-        while (enum_state != STOP && alarmCount < MAX_RET_ATTEMPTS)
+        while (enum_state != STOP && alarmCount <= MAX_RET_ATTEMPTS)
         {
             //unsigned char buf[BUF_SIZE] = {0};
             unsigned char byte = 0;
@@ -180,7 +143,7 @@ int llclose(int fd, unsigned char flag) // temos que fazer aqui a retrnsmission?
             if((bytes = read(fd, &byte, sizeof(byte))) < 0)
             {
                 perror("Error read DISC command");
-                exit(-1);
+                return -1;
             }
             if(bytes > 0){
                 switch (enum_state)
@@ -217,105 +180,77 @@ int llclose(int fd, unsigned char flag) // temos que fazer aqui a retrnsmission?
             if(alarmEnabled)
             {
                 alarmEnabled = FALSE;
-                alarm(3);
+                alarm(TIMEOUT);
                 if(send_packet_command(fd, A_SEND, C_DISC)) return -1;
                 enum_state = START;
             }
         }
         if(send_packet_command(fd, A_SEND, C_UA)) return -1;
+        printf("Disconnected\n");
     }
     if(flag == RECEIVER)
     {
-        while (enum_state != STOP)
-        {
-            //unsigned char buf[BUF_SIZE] = {0};
-            unsigned char byte = 0;
-            int bytes;
-            if((bytes = read(fd, &byte, sizeof(byte))) < 0)
-            {
-                perror("Error read DISC command");
-                exit(-1);
-            }
-            if(bytes > 0){
-                switch (enum_state)
-                {
-                case START:
-                    if(byte == FLAG) enum_state = FLAG_RCV;
-                    break;
-                case FLAG_RCV:
-                    if(byte == FLAG) continue;
-                    if(byte == A_SEND) enum_state = A_RCV;
-                    else enum_state = START;
-                    break;
-                case A_RCV:
-                    if(byte == C_DISC) enum_state = C_RCV;
-                    else if(byte == FLAG) enum_state = FLAG_RCV;
-                    else enum_state = START;
-                    break;
-                case C_RCV:
-                    if(byte == (C_DISC ^ A_SEND)) enum_state = BCC_OK;
-                    else if(byte == FLAG) enum_state = FLAG_RCV;
-                    else enum_state = START;
-                    break;
-                case BCC_OK:
-                    if(byte == FLAG) enum_state = STOP;
-                    else enum_state = START;
-                    break;      
-                default:
-                    enum_state = START;
-                }
-            }
-        }
-
-        enum_state = START;
+        //sleep(5);
+        if(receivePacket(fd, A_SEND, C_DISC)) return -1;
+    
         if(send_packet_command(fd, A_RECV, C_DISC)) return -1;
 
-        while (enum_state != STOP)
-        {
-            //unsigned char buf[BUF_SIZE] = {0};
-            unsigned char byte = 0;
-            int bytes;
-            if((bytes = read(fd, &byte, sizeof(byte))) < 0)
-            {
-                perror("Error read DISC command");
-                exit(-1);
-            }
-            if(bytes > 0){
-                switch (enum_state)
-                {
-                case START:
-                    if(byte == FLAG) enum_state = FLAG_RCV;
-                    break;
-                case FLAG_RCV:
-                    if(byte == FLAG) continue;
-                    if(byte == A_SEND) enum_state = A_RCV;
-                    else enum_state = START;
-                    break;
-                case A_RCV:
-                    if(byte == C_UA) enum_state = C_RCV;
-                    else if(byte == FLAG) enum_state = FLAG_RCV;
-                    else enum_state = START;
-                    break;
-                case C_RCV:
-                    if(byte == (C_UA ^ A_SEND)) enum_state = BCC_OK;
-                    else if(byte == FLAG) enum_state = FLAG_RCV;
-                    else enum_state = START;
-                    break;
-                case BCC_OK:
-                    if(byte == FLAG) enum_state = STOP;
-                    else enum_state = START;
-                    break;      
-                default:
-                    enum_state = START;
-                }
-            }
-        }
+        if(receivePacket(fd, A_SEND, C_UA)) return -1;
+        printf("Disconnected\n");
     }
 
     if(disconnectFD(fd)) return -1;
-    printf("Disconnected\n");
     return 0;
 }
+
+
+int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED) {
+    enum state enum_state = START;
+    
+    while (enum_state != STOP)
+    {
+        //unsigned char buf[BUF_SIZE] = {0};
+        unsigned char byte = 0;
+        int bytes;
+        if((bytes = read(fd, &byte, sizeof(byte))) < 0)
+        {
+            perror("Error read DISC command");
+            return -1;
+        }
+        if(bytes > 0){
+            switch (enum_state)
+            {
+            case START:
+                if(byte == FLAG) enum_state = FLAG_RCV;
+                break;
+            case FLAG_RCV:
+                if(byte == FLAG) continue;
+                if(byte == A_EXPECTED) enum_state = A_RCV;
+                else enum_state = START;
+                break;
+            case A_RCV:
+                if(byte == C_EXPECTED) enum_state = C_RCV;
+                else if(byte == FLAG) enum_state = FLAG_RCV;
+                else enum_state = START;
+                break;
+            case C_RCV:
+                if(byte == (C_EXPECTED ^ A_EXPECTED)) enum_state = BCC_OK;
+                else if(byte == FLAG) enum_state = FLAG_RCV;
+                else enum_state = START;
+                break;
+            case BCC_OK:
+                if(byte == FLAG) enum_state = STOP;
+                else enum_state = START;
+                break;      
+            default:
+                enum_state = START;
+            }
+        }
+    }
+    
+    return 0; 
+}
+
 
 int connectFD(const char * port)
 {
@@ -362,7 +297,7 @@ int connectFD(const char * port)
     if (tcsetattr(fd, TCSANOW, &newtio) == -1)
     {
         perror("tcsetattr");
-        exit(-1);
+        return -1;
     }
 
     printf("New termios structure set\n");
@@ -379,4 +314,6 @@ int disconnectFD(int fd)
     }
     return 0;
 }
+
+
 
