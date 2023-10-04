@@ -67,6 +67,9 @@ int send_packet_command(int fd, unsigned char A, unsigned char C);
 
 int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED); // aux function with while loop.
 
+int recivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED,
+                                unsigned char A_TO_SEND, unsigned char C_TO_SEND);
+
 int connectFD(const char * port); // /dev/ttySx 
 
 int disconnectFD(int fd);
