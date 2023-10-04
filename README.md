@@ -4,11 +4,26 @@ This repository holds the source code of the first project in the RCOM curricula
 
 The objective of this project is to send a file (via serial port) between two different machines
 
-Some commands: 
+
+### Commands
+Create virtual Serial Port (just Linux): 
 ```
 sudo socat -d  -d  PTY,link=/dev/ttyS10,mode=777   PTY,link=/dev/ttyS11,mode=777
-gcc write_noncanonical.c -o write
-gcc read_noncanonical.c -o read
-./write /dev/ttyS11
-./read /dev/ttyS10
+```
+To compile all project:
+```
+make
+```
+To run receiver:
+```
+make run_receiver
+```
+
+To run sender:
+```
+make run_sender
+```
+To clean binary files:
+```
+make clean
 ```
