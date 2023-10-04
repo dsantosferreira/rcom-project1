@@ -190,13 +190,70 @@ int llclose(int fd, unsigned char flag) // temos que fazer aqui a retrnsmission?
     }
     if(flag == RECEIVER)
     {
-        //sleep(5);
+
         if(receivePacket(fd, A_SEND, C_DISC)) return -1;
-    
+
+
+        (void)signal(SIGALRM, alarmHandler);
+        alarm(TIMEOUT); 
+
         if(send_packet_command(fd, A_RECV, C_DISC)) return -1;
 
-        if(receivePacket(fd, A_SEND, C_UA)) return -1;
-        printf("Disconnected\n");
+        while (enum_state != STOP && alarmCount <= MAX_RET_ATTEMPTS)
+        {
+            unsigned char byte = 0;
+            int bytes;
+            if((bytes = read(fd, &byte, sizeof(byte))) < 0)
+            {
+                perror("Error read UA command");
+                return -1;
+            }
+            if(bytes > 0){
+                switch (enum_state)
+                {
+                case START:
+                    if(byte == FLAG) enum_state = FLAG_RCV;
+                    break;
+                case FLAG_RCV:
+                    if(byte == FLAG) continue;
+                    if(byte == A_SEND) enum_state = A_RCV;
+                    else enum_state = START;
+                    break;
+                case A_RCV:
+                    if(byte == C_UA) enum_state = C_RCV;
+                    else if(byte == FLAG) enum_state = FLAG_RCV;
+                    else enum_state = START;
+                    break;
+                case C_RCV:
+                    if(byte == (C_UA ^ A_SEND)) enum_state = BCC_OK;
+                    else if(byte == FLAG) enum_state = FLAG_RCV;
+                    else enum_state = START;
+                    break;
+                case BCC_OK:
+                    if(byte == FLAG) enum_state = STOP;
+                    else enum_state = START;
+                    break;      
+                default:
+                    enum_state = START;
+                }
+            }
+
+            if(enum_state == STOP)
+            {
+                printf("Disconnected\n");
+                alarmDisable();
+            }
+
+            if(alarmEnabled)
+            {
+                alarmEnabled = FALSE;
+                alarm(TIMEOUT);
+                if(send_packet_command(fd, A_RECV, C_DISC)) return -1;
+                enum_state = START;
+            }
+        }
+
+
     }
 
     if(disconnectFD(fd)) return -1;
@@ -250,7 +307,6 @@ int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED) {
     
     return 0; 
 }
-
 
 int connectFD(const char * port)
 {
