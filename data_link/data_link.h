@@ -27,6 +27,7 @@
 #define A_RECV  0x01
 #define C_SET   0x03
 #define C_UA    0x07
+#define C_DISC  0x0B
 
 #define MAX_RET_ATTEMPTS 3 // Maximum number of retransmission attempts
 
@@ -53,13 +54,15 @@ struct linkLayer {
 
 int llopen(const char * port, unsigned char flag);
 
+int llclose(int fd, unsigned char flag);
+
 void alarmHandler(int signal);
 
 void alarmDisable();
 
 void print_answer(unsigned char *answer, int n);
 
-void send_packet_command(int fd, unsigned char C, unsigned char A);
+int send_packet_command(int fd, unsigned char C, unsigned char A);
 
 int connectFD(const char * port); // /dev/ttySx 
 

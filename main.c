@@ -23,6 +23,9 @@ int main(int argc, char *argv[])
     
     if(r < 0) printf("Some error !\n");
 
+    if(flag[0] == 'r') llclose(r, RECEIVER);
+    if(flag[0] == 's') llclose(r, TRANSMITTER);
+
     return 0;
 }
 
