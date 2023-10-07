@@ -60,7 +60,7 @@ int llopen(const char * port, unsigned char flag)
     return fd;
 }
 
-int llclose(int fd, unsigned char flag) // temos que fazer aqui a retrnsmission?
+int llclose(int fd, unsigned char flag) // check this
 {
     if(flag == TRANSMITTER)
     {
@@ -79,6 +79,7 @@ int llclose(int fd, unsigned char flag) // temos que fazer aqui a retrnsmission?
     return 0;
 }
 
+// Check in pratical class --> Add timer of +- 10 seconds to timeout if the packet isn't received
 int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED) 
 {
     enum state enum_state = START;
@@ -127,8 +128,7 @@ int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED)
     return 0; 
 }
 
-int recivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED,
-                                unsigned char A_TO_SEND, unsigned char C_TO_SEND)
+int recivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED, unsigned char A_TO_SEND, unsigned char C_TO_SEND)
 {
     enum state enum_state = START;
     (void)signal(SIGALRM, alarmHandler);
@@ -177,7 +177,11 @@ int recivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char C
             }
         }
 
-        if(enum_state == STOP) alarmDisable();
+        if(enum_state == STOP) 
+        {
+            alarmDisable();
+            return 0;
+        }
         
         if(alarmEnabled)
         {
@@ -187,7 +191,8 @@ int recivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char C
             enum_state = START;
         }
     }
-    return 0;
+    
+    return -1;
 }
 
 int connectFD(const char * port)
