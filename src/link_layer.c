@@ -192,8 +192,8 @@ int receivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char 
 {
     enum state enum_state = START;
     (void)signal(SIGALRM, alarmHandler);
-    alarm(connectionParameters.timeout); 
     if(send_packet_command(fd, A_TO_SEND, C_TO_SEND)) return -1;
+    alarm(connectionParameters.timeout); 
 
     while (enum_state != STOP && alarmCount <= connectionParameters.nRetransmissions)
     {
@@ -244,8 +244,8 @@ int receivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char 
         if(alarmEnabled)
         {
             alarmEnabled = FALSE;
-            alarm(connectionParameters.timeout);
             if(send_packet_command(fd, A_TO_SEND, C_TO_SEND)) return -1;
+            alarm(connectionParameters.timeout);
             enum_state = START;
         }
     }
@@ -313,11 +313,7 @@ int llwrite(const unsigned char *buf, int bufSize)
     // TODO: Retornar número de bytes escritos
     int newSize;
     const unsigned char *newBuf = byteStuffing(buf, bufSize, &newSize);
-
     if(newBuf == NULL) return -1;
-
-    print_answer(newBuf, newSize);
-    printf("Size of buf: %d\n", newSize);
 
     unsigned char *trama = (unsigned char *) malloc(newSize + 6);
     
@@ -334,13 +330,13 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     enum state enum_state = START;
     (void)signal(SIGALRM, alarmHandler);
-    alarm(connectionParameters.timeout); 
     if(write(fd, trama, (newSize + 6)) < 0)
     {
         perror("Error write send command");
         return -1;
     }
-    unsigned char C_Nr = 0; // Nr
+    alarm(connectionParameters.timeout); 
+    unsigned char C_Nr = 0;
 
     while (enum_state != STOP && alarmCount <= connectionParameters.nRetransmissions)
     {
@@ -400,12 +396,12 @@ int llwrite(const unsigned char *buf, int bufSize)
         if(alarmEnabled)
         {
             alarmEnabled = FALSE;
-            alarm(connectionParameters.timeout);
             if(write(fd, trama, (newSize + 6)) < 0)
             {
                 perror("Error write send command");
                 return -1;
             }
+            alarm(connectionParameters.timeout);
             enum_state = START;
         }
     }
@@ -420,6 +416,7 @@ int llread(unsigned char *packet)
     return 0;
 }
 
+// Do we need here roles?
 int llclose(int showStatistics)
 {
     if(connectionParameters.role == LlTx)
