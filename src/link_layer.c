@@ -443,7 +443,7 @@ unsigned char * byteDestuffing(unsigned char *buf, int bufSize, int *newSize)
         }
     }
     result[j++] = '\0'; // TODO: How to mark end of array?
-    *newSize = (int) j;
+    *newSize = (int) j; // newSize include '\0' value
     result = realloc(result, j);
     if (result == NULL) return NULL;
     
@@ -503,7 +503,7 @@ int llread(unsigned char *packet)
                     else C_respons = (C_received == C_INF0)? REJ0 : REJ1;
                     
                     if(send_packet_command(fd, A_RECV, C_respons)) return -1;
-                    return newSize; // Need to check or +6?
+                    return newSize; // Need to check or +6? (number of elements + 1 '\0')
                 }
                 packet[pkt_indx++] = byte;
                 break;
@@ -512,7 +512,7 @@ int llread(unsigned char *packet)
             }
         }
     }
-    return 0;
+    return -1;
 }
 
 // Do we need here roles?
