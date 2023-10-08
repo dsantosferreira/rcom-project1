@@ -42,15 +42,8 @@ int main(int argc, char *argv[])
            TIMEOUT,
            filename);
 
-    //applicationLayer(serialPort, role, BAUDRATE, N_TRIES, TIMEOUT, filename);
-    //LinkLayer connectionParametersApp = {argv[1], (role == "r" : LlTx), BAUDRATE, N_TRIES, TIMEOUT};
+    // applicationLayer(serialPort, role, BAUDRATE, N_TRIES, TIMEOUT, filename);
     
-    unsigned char *buf = (unsigned char *) malloc(4);
-    buf[0] = 0x00;
-    buf[1] = 0x01;
-    buf[2] = 0x7E;
-    buf[3] = 0x7D;
-    llwrite(buf, 4);
 
     LinkLayer connectionParametersApp;
     strncpy(connectionParametersApp.serialPort, argv[1], sizeof(connectionParametersApp.serialPort)-1);

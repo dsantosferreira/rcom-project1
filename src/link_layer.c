@@ -33,6 +33,9 @@
 #define C_UA        0x07
 #define C_DISC      0x0B
 
+#define C_INF0      0x00
+#define C_INF1      0x40
+
 #define RR0         0x05
 #define RR1         0x85
 #define REJ0        0x01
@@ -44,7 +47,8 @@ enum state{
     A_RCV,
     C_RCV,
     BCC_OK,
-    BCC2_OK,
+    DATA,
+    STUFF,
     STOP
 };
 
@@ -144,6 +148,8 @@ int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED)
 {
     enum state enum_state = START;
     
+    //(void)signal(SIGALRM, alarmHandler);
+    //alarm(connectionParameters.timeout * connectionParameters.nRetransmissions + 1); 
     while (enum_state != STOP)
     {
         //unsigned char buf[BUF_SIZE] = {0};
@@ -183,6 +189,7 @@ int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED)
                 enum_state = START;
             }
         }
+        // if(alarmEnabled) return -1;
     }
     
     return 0; 
@@ -283,6 +290,8 @@ void print_answer(const unsigned char *answer, int n)
 
 const unsigned char * byteStuffing(const unsigned char *buf, int bufSize, int *newSize)
 {
+    if(buf == NULL || newSize == NULL) return NULL;
+
     unsigned char *result = (unsigned char *) malloc(bufSize * 2 + 1);
     if(result == NULL) return NULL;
     size_t j = 0;
@@ -300,6 +309,7 @@ const unsigned char * byteStuffing(const unsigned char *buf, int bufSize, int *n
             result[j] = buf[i];
     }
 
+    *newSize = (int) j;
     result = realloc(result, j);
 
     if (result == NULL) return NULL;
@@ -316,14 +326,15 @@ int llwrite(const unsigned char *buf, int bufSize)
     if(newBuf == NULL) return -1;
 
     unsigned char *trama = (unsigned char *) malloc(newSize + 6);
-    
+    if(trama == NULL) return -1;
+
     trama[0] = FLAG;
     trama[1] = A_SEND;
-    trama[2] = C_Ns == 0 ? 0x00 : 0x40;
+    trama[2] = (C_Ns) ? C_INF1 : C_INF0;
     trama[3] = trama[1] ^ trama[2];
     memcpy(trama + 4, newBuf, newSize);
     unsigned char bcc2 = 0x00;
-    for(size_t i = 0; i < newSize; i++) bcc2 ^=  newBuf[i];
+    for(size_t i = 0; i < bufSize; i++) bcc2 ^=  buf[i]; // Slide 15 #4.
     trama[newSize + 4] = bcc2;
     trama[newSize + 5] = FLAG;
     
@@ -386,10 +397,10 @@ int llwrite(const unsigned char *buf, int bufSize)
                 alarmEnabled = TRUE;
             }
             if(C_Nr == RR0 || C_Nr == RR1) {
-                alarmDisable();
+                // alarmDisable(); Vai comecar fazer alarmCount de 0.
                 C_Ns = (C_Ns) ? 0 : 1;
                 //C_Ns = C_Nr;
-                return newSize + 6; // CHECK THIS OR newSize 
+                return newSize; // CHECK THIS OR newSize + 6? 
             }
         }
         
@@ -409,14 +420,103 @@ int llwrite(const unsigned char *buf, int bufSize)
     return -1;
 }
 
+unsigned char * byteDestuffing(unsigned char *buf, int bufSize, int *newSize)
+{
+    if(buf == NULL || newSize == NULL) return NULL;
+    // [D0, D1, ... DN].
+    // ESC,ESC_FLAG => FLAG.
+    // ESC, ESC_ESC => ESC.
+
+    unsigned char *result = (unsigned char *) malloc(bufSize);
+    if(result == NULL) return NULL;
+    size_t j = 0; // index of result array
+
+    for(size_t i = 0; i < bufSize; i++){
+        if(buf[i] != ESC) result[j++] = buf[i]; 
+        else{
+            if(i + 1 == bufSize){ // caso se ultimo byte era ESC
+                result[j++] = buf[i]; 
+                break;
+            } 
+            if(buf[i + 1] == ESC_FLAG) {result[j++] = FLAG; i++;}
+            else if(buf[i + 1] == ESC_ESC) {result[j++] = ESC; i++;}
+        }
+    }
+    result[j++] = '\0'; // TODO: How to mark end of array?
+    *newSize = (int) j;
+    result = realloc(result, j);
+    if (result == NULL) return NULL;
+    
+    return result;
+}
+
 int llread(unsigned char *packet)
 {
-    // TODO
+    enum state enum_state = START;
+    unsigned char C_received= 0; // o valor C recebido de trama.
+    size_t pkt_indx = 0; // o index atual de escrita na packet.
+    while (enum_state != STOP)
+    {
+        unsigned char byte = 0;
+        int bytes;
+        if((bytes = read(fd, &byte, sizeof(byte))) < 0)
+        {
+            perror("Error read DISC command");
+            return -1;
+        }
+        if(bytes > 0){
+            switch (enum_state)
+            {
+            case START:
+                if(byte == FLAG) enum_state = FLAG_RCV;
+                break;
+            case FLAG_RCV:
+                if(byte == FLAG) continue;
+                if(byte == A_SEND) enum_state = A_RCV; // need to check A_SEND
+                else enum_state = START;
+                break;
+            case A_RCV:
+                if(byte == C_INF0 || byte == C_INF1){
+                    enum_state = C_RCV;
+                    C_received = byte;
+                }
+                else if(byte == FLAG) enum_state = FLAG_RCV;
+                else enum_state = START;
+                break;
+            case C_RCV:
+                if(byte == (C_received ^ A_SEND)) enum_state = DATA; // need to check A_SEND
+                else if(byte == FLAG) enum_state = FLAG_RCV;
+                else enum_state = START;
+                break;
+            case DATA: // se for FLAG passa para BCC_OK
+                if(byte == FLAG){
+                    enum_state = STOP;
+                    int newSize = 0;
+                    unsigned char bcc2_received = packet[--pkt_indx];
+                    packet = byteDestuffing(packet, pkt_indx, &newSize);
+                    unsigned char bcc2 = 0x00;
+                    for(size_t i = 0; i < newSize; i++) bcc2 ^= packet[i];
 
+                    unsigned char C_respons;
+                    // Check this!!!
+                    if(bcc2 == bcc2_received) C_respons = (C_received == C_INF0)? RR1 : RR0;
+                    else C_respons = (C_received == C_INF0)? REJ0 : REJ1;
+                    
+                    if(send_packet_command(fd, A_RECV, C_respons)) return -1;
+                    return newSize; // Need to check or +6?
+                }
+                packet[pkt_indx++] = byte;
+                break;
+            default:
+                enum_state = START;
+            }
+        }
+    }
     return 0;
 }
 
 // Do we need here roles?
+// Check A_RECV A_SEND
 int llclose(int showStatistics)
 {
     if(connectionParameters.role == LlTx)
