@@ -8,7 +8,7 @@
 
 #include "link_layer.h" // TODO: Delete this when application layer is done
 
-#define BAUDRATE 9600
+#define BAUDRATE 960
 #define N_TRIES 3
 #define TIMEOUT 4
 
@@ -45,6 +45,7 @@ int main(int argc, char *argv[])
     // applicationLayer(serialPort, role, BAUDRATE, N_TRIES, TIMEOUT, filename);
     
 
+
     LinkLayer connectionParametersApp;
     strncpy(connectionParametersApp.serialPort, argv[1], sizeof(connectionParametersApp.serialPort)-1);
     connectionParametersApp.role = strcmp(role, "tx") ? LlRx : LlTx; 
@@ -52,11 +53,34 @@ int main(int argc, char *argv[])
     connectionParametersApp.nRetransmissions = N_TRIES;
     connectionParametersApp.timeout = TIMEOUT;
     
-    int r;
-    if(strcmp(role, "rx") == 0) r = llopen(connectionParametersApp);
-    if(strcmp(role, "tx") == 0) r = llopen(connectionParametersApp);
+    if(strcmp(role, "rx") == 0) llopen(connectionParametersApp);
+    if(strcmp(role, "tx") == 0) llopen(connectionParametersApp);
     
-    if(r < 0) printf("Some error !\n");
+    FILE *file = NULL;
+    unsigned char *buffer = (unsigned char *)malloc(BAUDRATE);
+    size_t bytesRead = 0;
+
+
+    if (strcmp(role, "tx") == 0) {
+        file = fopen(filename, "rb");
+        while ((bytesRead = fread(buffer, 1, BAUDRATE, file))) {
+            printf("Estou no while\n");
+            llwrite(buffer, bytesRead);
+        }
+    } else {
+        file = fopen(filename, "w");
+        unsigned char *packet = (unsigned char *) malloc(BAUDRATE);
+        while ((bytesRead = llread(packet))) {
+            for(int i = 0; i < bytesRead; i++) 
+            {
+                printf("buf[%d] = 0x%02X\n", i, packet[i]);
+            }
+
+            fwrite(packet, 1, bytesRead, file);
+
+            if (bytesRead < BAUDRATE) break;
+        }
+    }
 
     if(strcmp(role, "rx") == 0) llclose(0);
     if(strcmp(role, "tx") == 0) llclose(0);

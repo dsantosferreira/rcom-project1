@@ -58,6 +58,7 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 int fd;
 unsigned char C_Ns = 0; // Ns
+unsigned char C_Nr = 0; // Nr (o valor que ele espera de receber)
 
 int connectFD(const char * port)
 {
@@ -153,7 +154,6 @@ int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED)
     //alarm(connectionParameters.timeout * connectionParameters.nRetransmissions + 1); 
     while (enum_state != STOP)
     {
-        //unsigned char buf[BUF_SIZE] = {0};
         unsigned char byte = 0;
         int bytes;
         if((bytes = read(fd, &byte, sizeof(byte))) < 0)
@@ -205,7 +205,6 @@ int receivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char 
 
     while (enum_state != STOP && alarmCount <= connectionParameters.nRetransmissions)
     {
-        //unsigned char buf[BUF_SIZE] = {0};
         unsigned char byte = 0;
         int bytes;
         if((bytes = read(fd, &byte, sizeof(byte))) < 0)
@@ -265,7 +264,7 @@ int llopen(LinkLayer connectionParametersApp)
 {
     memcpy(&connectionParameters, &connectionParametersApp, sizeof(connectionParametersApp));
 
-    fd = connectFD(connectionParameters.serialPort); // get connection to serial ports.
+    fd = connectFD(connectionParameters.serialPort);
     if(fd < 0) return -1;
 
     if(connectionParameters.role == LlTx){
@@ -275,10 +274,9 @@ int llopen(LinkLayer connectionParametersApp)
     if(connectionParameters.role == LlRx){
         if(receivePacket(fd, A_SEND, C_SET)) return -1;
         if(send_packet_command(fd, A_SEND, C_UA)) return -1;
-        sleep(1);
         printf("Connection established\n");
     }
-    return fd; // TODO: Return 1?
+    return 1; // TODO: Return fd?
 }
 
 void print_answer(const unsigned char *answer, int n)
@@ -314,20 +312,25 @@ const unsigned char * byteStuffing(const unsigned char *buf, int bufSize, int *n
     result = realloc(result, j);
 
     if (result == NULL) return NULL;
-    
+
     return result;
 }
 
 int llwrite(const unsigned char *buf, int bufSize)
 {
+
+    // TODO: Remove this later
+
+    int kaboom = TRUE;
+
     // TODO: Verificar lógica da mudança de valor de C_Ns
     // TODO: Retornar número de bytes escritos
-    // TODO: Temos que ter newBuf, nao podemos usar so buf? ou free(buf)?
+    // TODO: Temos que ter newBuf, nao podemos usar so buf? ou free(buf)? Calcular bcc2 logo no inicio.
     if(buf == NULL) return -1;
     int newSize;
     const unsigned char *newBuf = byteStuffing(buf, bufSize, &newSize);
     if(newBuf == NULL) return -1;
-
+    printf("new Size de write%d\n", newSize);
     unsigned char *trama = (unsigned char *) malloc(newSize + 6);
     if(trama == NULL) return -1;
 
@@ -336,10 +339,24 @@ int llwrite(const unsigned char *buf, int bufSize)
     trama[2] = (C_Ns) ? C_INF1 : C_INF0;
     trama[3] = trama[1] ^ trama[2];
     memcpy(trama + 4, newBuf, newSize);
+
+    for(int i = 0; i < 5; i++) 
+    {
+        printf("buf[%d] = 0x%02X\n", i, trama[i]);
+    }
+
     unsigned char bcc2 = 0x00;
-    for(size_t i = 0; i < bufSize; i++) bcc2 ^=  buf[i]; // Slide 15 #4.
-    trama[newSize + 4] = bcc2;
-    trama[newSize + 5] = FLAG;
+    for(size_t i = 0; i < bufSize; i++) bcc2 ^=  buf[i];
+    trama[newSize + 4] = bcc2; 
+    if(bcc2 == FLAG){
+        trama[newSize + 4] = ESC;
+        newSize++;
+        trama[newSize + 4] = ESC_FLAG;
+        trama = realloc(trama, newSize + 6);
+        trama[newSize + 5] = FLAG;
+    }else{
+        trama[newSize + 5] = FLAG;
+    }
     
 
     enum state enum_state = START;
@@ -350,10 +367,11 @@ int llwrite(const unsigned char *buf, int bufSize)
         return -1;
     }
     alarm(connectionParameters.timeout); 
-    unsigned char C_Nr = 0;
+    unsigned char C_received = 0, A_received = 0;
 
     while (enum_state != STOP && alarmCount <= connectionParameters.nRetransmissions)
     {
+        //printf("state: %d\n", enum_state);
         unsigned char byte = 0;
         int bytes;
         if((bytes = read(fd, &byte, sizeof(byte))) < 0)
@@ -365,23 +383,28 @@ int llwrite(const unsigned char *buf, int bufSize)
             switch (enum_state)
             {
             case START:
+                C_received = 0;
+                A_received = 0;
                 if(byte == FLAG) enum_state = FLAG_RCV;
                 break;
             case FLAG_RCV:
                 if(byte == FLAG) continue;
-                if(byte == A_SEND) enum_state = A_RCV;
+                if(byte == A_SEND || byte == A_RECV) {
+                    enum_state = A_RCV;
+                    A_received = byte;
+                }
                 else enum_state = START;
                 break;
             case A_RCV:
                 if(byte == RR0 || byte == RR1 || byte == REJ0 || byte == REJ1) {
                     enum_state = C_RCV;
-                    C_Nr = byte;
+                    C_received = byte;
                 }
                 else if(byte == FLAG) enum_state = FLAG_RCV;
                 else enum_state = START;
                 break;
             case C_RCV:
-                if(byte == (C_Nr ^ A_SEND)) enum_state = BCC_OK;
+                if(byte == (C_received ^ A_received)) enum_state = BCC_OK;
                 else if(byte == FLAG) enum_state = FLAG_RCV;
                 else enum_state = START;
                 break;
@@ -396,14 +419,19 @@ int llwrite(const unsigned char *buf, int bufSize)
 
         if(enum_state == STOP) 
         {
-            if(C_Nr == REJ0 || C_Nr == REJ1){ // timerCounter-- dá-se reset ao alarm?
+            if(C_received == REJ0 || C_received == REJ1){ // timerCounter-- dá-se reset ao alarm?
                 alarmEnabled = TRUE;
+                //printf("received reject\n");
+                if (kaboom) {
+                    print_answer(trama, 106);
+                    kaboom = FALSE;
+                }
             }
-            if(C_Nr == RR0 || C_Nr == RR1) {
-                // alarmDisable(); Vai comecar fazer alarmCount de 0.
-                C_Ns = (C_Ns) ? 0 : 1;
-                //C_Ns = C_Nr;
-                return newSize; // CHECK THIS OR newSize + 6? 
+            if(C_received == RR0 || C_received == RR1) {
+                // alarmDisable(); Vai comecar fazer alarmCount de 0. or alarm(0)?
+                C_Ns = 1 - C_Ns;
+                //C_Ns = C_received;
+                return bufSize; // CHECK THIS OR newSize + 6? 
             }
         }
         
@@ -423,12 +451,9 @@ int llwrite(const unsigned char *buf, int bufSize)
     return -1;
 }
 
-unsigned char * byteDestuffing(unsigned char *buf, int bufSize, int *newSize)
+unsigned char * byteDestuffing(unsigned char *buf, int bufSize, int *newSize, unsigned char *bcc2_received)
 {
     if(buf == NULL || newSize == NULL) return NULL;
-    // [D0, D1, ... DN].
-    // ESC,ESC_FLAG => FLAG.
-    // ESC, ESC_ESC => ESC.
 
     unsigned char *result = (unsigned char *) malloc(bufSize);
     if(result == NULL) return NULL;
@@ -440,26 +465,28 @@ unsigned char * byteDestuffing(unsigned char *buf, int bufSize, int *newSize)
             if(i + 1 == bufSize){ // caso se ultimo byte era ESC
                 result[j++] = buf[i]; 
                 break;
-            } 
+            }
             if(buf[i + 1] == ESC_FLAG) {result[j++] = FLAG; i++;}
             else if(buf[i + 1] == ESC_ESC) {result[j++] = ESC; i++;}
         }
     }
-    result[j++] = '\0'; // TODO: How to mark end of array?
-    *newSize = (int) j; // newSize include '\0' value
-    result = realloc(result, j);
-    if (result == NULL) return NULL;
     
+    *bcc2_received = result[j - 1];
+    *newSize = (int) (j - 1); // newSize include '\0' value
+    result = realloc(result, j - 1);
+    if (result == NULL) return NULL;
+
     return result;
 }
 
 int llread(unsigned char *packet)
 {
     enum state enum_state = START;
-    unsigned char C_received= 0; // o valor C recebido de trama.
+    unsigned char C_received = 0; // o valor C recebido de trama.
     size_t pkt_indx = 0; // o index atual de escrita na packet.
     while (enum_state != STOP)
     {
+        printf("state: %d\n", enum_state);
         unsigned char byte = 0;
         int bytes;
         if((bytes = read(fd, &byte, sizeof(byte))) < 0)
@@ -471,14 +498,17 @@ int llread(unsigned char *packet)
             switch (enum_state)
             {
             case START:
+                C_received = 0;
+                pkt_indx = 0;
                 if(byte == FLAG) enum_state = FLAG_RCV;
                 break;
             case FLAG_RCV:
                 if(byte == FLAG) continue;
-                if(byte == A_SEND) enum_state = A_RCV; // need to check A_SEND
+                if(byte == A_SEND) enum_state = A_RCV;
                 else enum_state = START;
                 break;
             case A_RCV:
+                printf("byte = 0x%02X\n", byte);
                 if(byte == C_INF0 || byte == C_INF1){
                     enum_state = C_RCV;
                     C_received = byte;
@@ -493,20 +523,34 @@ int llread(unsigned char *packet)
                 break;
             case DATA: // se for FLAG passa para BCC_OK
                 if(byte == FLAG){
+                    printf("byte == FLAG\n");
                     enum_state = STOP;
                     int newSize = 0;
-                    unsigned char bcc2_received = packet[--pkt_indx];
-                    packet = byteDestuffing(packet, pkt_indx, &newSize);
+                    unsigned char bcc2_received;
+                    
+                    packet = byteDestuffing(packet, pkt_indx, &newSize, &bcc2_received);
+                    printf("pkt_indx = %ld\n", pkt_indx);
+                    printf("newSize = %d\n", newSize);
                     unsigned char bcc2 = 0x00;
                     for(size_t i = 0; i < newSize; i++) bcc2 ^= packet[i];
 
-                    unsigned char C_respons;
+                    unsigned char C_respons, A_respons;
                     // Check this!!!
-                    if(bcc2 == bcc2_received) C_respons = (C_received == C_INF0)? RR1 : RR0;
-                    else C_respons = (C_received == C_INF0)? REJ0 : REJ1;
-                    
-                    if(send_packet_command(fd, A_RECV, C_respons)) return -1;
-                    return newSize; // Need to check or +6? (number of elements + 1 '\0')
+                    if(bcc2 == bcc2_received) {
+                        C_respons = (C_received == C_INF0)? RR1 : RR0;
+                        A_respons = A_SEND;
+                    }
+                    else{
+                        C_respons = (C_received == C_INF0)? REJ0 : REJ1;
+                        A_respons = A_RECV;
+                    } 
+
+                    if(send_packet_command(fd, A_respons, C_respons)) return -1;
+                    if((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)){
+                        C_Nr = 1 - C_Nr;
+                        return newSize;
+                    } 
+                    enum_state = START;
                 }
                 packet[pkt_indx++] = byte;
                 break;
@@ -519,19 +563,20 @@ int llread(unsigned char *packet)
 }
 
 // Do we need here roles?
-// Check A_RECV A_SEND
 int llclose(int showStatistics)
 {
+    // TODO: show Statistics!
+    printf("DISCONNECT\n");
     if(connectionParameters.role == LlTx)
     {
-        if(receivePacketRetransmission(fd, A_RECV, C_DISC, A_SEND, C_DISC)) return -1;
+        if(receivePacketRetransmission(fd, A_SEND, C_DISC, A_SEND, C_DISC)) return -1;
         if(send_packet_command(fd, A_SEND, C_UA)) return -1;
         printf("Disconnected\n");
     }
     if(connectionParameters.role == LlRx)
     {
         if(receivePacket(fd, A_SEND, C_DISC)) return -1;
-        if(receivePacketRetransmission(fd, A_SEND, C_UA, A_RECV, C_DISC)) return -1;
+        if(receivePacketRetransmission(fd, A_SEND, C_UA, A_SEND, C_DISC)) return -1;
         printf("Disconnected\n");
     }
 
