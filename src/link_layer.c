@@ -61,6 +61,7 @@ unsigned char C_Ns = 0; // Ns
 
 int connectFD(const char * port)
 {
+    if(port == NULL) return -1;
     fd = open(port, O_RDWR | O_NOCTTY);
 
     if (fd < 0)
@@ -277,7 +278,7 @@ int llopen(LinkLayer connectionParametersApp)
         sleep(1);
         printf("Connection established\n");
     }
-    return fd;
+    return fd; // TODO: Return 1?
 }
 
 void print_answer(const unsigned char *answer, int n)
@@ -321,6 +322,8 @@ int llwrite(const unsigned char *buf, int bufSize)
 {
     // TODO: Verificar lógica da mudança de valor de C_Ns
     // TODO: Retornar número de bytes escritos
+    // TODO: Temos que ter newBuf, nao podemos usar so buf? ou free(buf)?
+    if(buf == NULL) return -1;
     int newSize;
     const unsigned char *newBuf = byteStuffing(buf, bufSize, &newSize);
     if(newBuf == NULL) return -1;
