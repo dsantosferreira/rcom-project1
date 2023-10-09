@@ -282,9 +282,7 @@ int llopen(LinkLayer connectionParametersApp)
 void print_answer(const unsigned char *answer, int n)
 {
     for(int i = 0; i < n; i++) 
-    {
         printf("buf[%d] = 0x%02X\n", i, answer[i]);
-    }
 }
 
 const unsigned char * byteStuffing(const unsigned char *buf, int bufSize, int *newSize)
@@ -340,15 +338,12 @@ int llwrite(const unsigned char *buf, int bufSize)
     trama[3] = trama[1] ^ trama[2];
     memcpy(trama + 4, newBuf, newSize);
 
-    for(int i = 0; i < 5; i++) 
-    {
-        printf("buf[%d] = 0x%02X\n", i, trama[i]);
-    }
 
     unsigned char bcc2 = 0x00;
     for(size_t i = 0; i < bufSize; i++) bcc2 ^=  buf[i];
     trama[newSize + 4] = bcc2; 
     if(bcc2 == FLAG){
+        printf("IRMAO O BCC2 IGUAL A FLAG\n");
         trama[newSize + 4] = ESC;
         newSize++;
         trama[newSize + 4] = ESC_FLAG;
@@ -451,12 +446,12 @@ int llwrite(const unsigned char *buf, int bufSize)
     return -1;
 }
 
-unsigned char * byteDestuffing(unsigned char *buf, int bufSize, int *newSize, unsigned char *bcc2_received)
+int byteDestuffing(unsigned char *buf, int bufSize, int *newSize, unsigned char *bcc2_received)
 {
-    if(buf == NULL || newSize == NULL) return NULL;
+    if(buf == NULL || newSize == NULL) return -1;
 
     unsigned char *result = (unsigned char *) malloc(bufSize);
-    if(result == NULL) return NULL;
+    if(result == NULL) return -1;
     size_t j = 0; // index of result array
 
     for(size_t i = 0; i < bufSize; i++){
@@ -472,11 +467,11 @@ unsigned char * byteDestuffing(unsigned char *buf, int bufSize, int *newSize, un
     }
     
     *bcc2_received = result[j - 1];
-    *newSize = (int) (j - 1); // newSize include '\0' value
+    *newSize = (int) (j - 1); 
     result = realloc(result, j - 1);
-    if (result == NULL) return NULL;
-
-    return result;
+    if (result == NULL) return -1;
+    memcpy(buf, result, j - 1);
+    return 0;
 }
 
 int llread(unsigned char *packet)
@@ -486,7 +481,7 @@ int llread(unsigned char *packet)
     size_t pkt_indx = 0; // o index atual de escrita na packet.
     while (enum_state != STOP)
     {
-        printf("state: %d\n", enum_state);
+        //printf("state: %d\n", enum_state);
         unsigned char byte = 0;
         int bytes;
         if((bytes = read(fd, &byte, sizeof(byte))) < 0)
@@ -508,7 +503,7 @@ int llread(unsigned char *packet)
                 else enum_state = START;
                 break;
             case A_RCV:
-                printf("byte = 0x%02X\n", byte);
+                //printf("byte = 0x%02X\n", byte);
                 if(byte == C_INF0 || byte == C_INF1){
                     enum_state = C_RCV;
                     C_received = byte;
@@ -523,19 +518,17 @@ int llread(unsigned char *packet)
                 break;
             case DATA: // se for FLAG passa para BCC_OK
                 if(byte == FLAG){
-                    printf("byte == FLAG\n");
                     enum_state = STOP;
                     int newSize = 0;
-                    unsigned char bcc2_received;
+                    unsigned char bcc2_received = 0;
                     
-                    packet = byteDestuffing(packet, pkt_indx, &newSize, &bcc2_received);
-                    printf("pkt_indx = %ld\n", pkt_indx);
-                    printf("newSize = %d\n", newSize);
+                    if(byteDestuffing(packet, pkt_indx, &newSize, &bcc2_received)) return -1;
+
                     unsigned char bcc2 = 0x00;
                     for(size_t i = 0; i < newSize; i++) bcc2 ^= packet[i];
 
                     unsigned char C_respons, A_respons;
-                    // Check this!!!
+
                     if(bcc2 == bcc2_received) {
                         C_respons = (C_received == C_INF0)? RR1 : RR0;
                         A_respons = A_SEND;
@@ -551,8 +544,10 @@ int llread(unsigned char *packet)
                         return newSize;
                     } 
                     enum_state = START;
+                }else{
+                    packet[pkt_indx++] = byte;
                 }
-                packet[pkt_indx++] = byte;
+                
                 break;
             default:
                 enum_state = START;
