@@ -41,6 +41,11 @@
 #define REJ0        0x01
 #define REJ1        0x81
 
+typedef struct
+{
+    size_t bytes_readed;
+} Statistics;
+
 enum state{
     START, 
     FLAG_RCV,
@@ -53,6 +58,7 @@ enum state{
 };
 
 LinkLayer connectionParameters;
+Statistics statistics = {0};
 struct termios oldtio;
 int alarmEnabled = FALSE;
 int alarmCount = 0;
@@ -316,19 +322,15 @@ const unsigned char * byteStuffing(const unsigned char *buf, int bufSize, int *n
 
 int llwrite(const unsigned char *buf, int bufSize)
 {
-
-    // TODO: Remove this later
-
-    int kaboom = TRUE;
-
     // TODO: Verificar lógica da mudança de valor de C_Ns
     // TODO: Retornar número de bytes escritos
     // TODO: Temos que ter newBuf, nao podemos usar so buf? ou free(buf)? Calcular bcc2 logo no inicio.
     if(buf == NULL) return -1;
+
     int newSize;
     const unsigned char *newBuf = byteStuffing(buf, bufSize, &newSize);
     if(newBuf == NULL) return -1;
-    printf("new Size de write%d\n", newSize);
+    printf("Bytes sended: %d\n", newSize);
     unsigned char *trama = (unsigned char *) malloc(newSize + 6);
     if(trama == NULL) return -1;
 
@@ -343,7 +345,7 @@ int llwrite(const unsigned char *buf, int bufSize)
     for(size_t i = 0; i < bufSize; i++) bcc2 ^=  buf[i];
     trama[newSize + 4] = bcc2; 
     if(bcc2 == FLAG){
-        printf("IRMAO O BCC2 IGUAL A FLAG\n");
+        printf("BCC2 == FLAG\n");
         trama[newSize + 4] = ESC;
         newSize++;
         trama[newSize + 4] = ESC_FLAG;
@@ -371,7 +373,7 @@ int llwrite(const unsigned char *buf, int bufSize)
         int bytes;
         if((bytes = read(fd, &byte, sizeof(byte))) < 0)
         {
-            perror("Error read UA command");
+            perror("Error read ... command");
             return -1;
         }
         if(bytes > 0){
@@ -416,16 +418,11 @@ int llwrite(const unsigned char *buf, int bufSize)
         {
             if(C_received == REJ0 || C_received == REJ1){ // timerCounter-- dá-se reset ao alarm?
                 alarmEnabled = TRUE;
-                //printf("received reject\n");
-                if (kaboom) {
-                    print_answer(trama, 106);
-                    kaboom = FALSE;
-                }
+                printf("Received reject; Second try.\n");
             }
             if(C_received == RR0 || C_received == RR1) {
                 // alarmDisable(); Vai comecar fazer alarmCount de 0. or alarm(0)?
                 C_Ns = 1 - C_Ns;
-                //C_Ns = C_received;
                 return bufSize; // CHECK THIS OR newSize + 6? 
             }
         }
@@ -541,12 +538,13 @@ int llread(unsigned char *packet)
                     if(send_packet_command(fd, A_respons, C_respons)) return -1;
                     if((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)){
                         C_Nr = 1 - C_Nr;
+                        printf("Bytes received: %d\n", newSize);
+                        statistics.bytes_readed += newSize;
                         return newSize;
                     } 
                     enum_state = START;
-                }else{
-                    packet[pkt_indx++] = byte;
-                }
+                    printf("Received duplicate\n");
+                }else packet[pkt_indx++] = byte;
                 
                 break;
             default:
@@ -557,11 +555,17 @@ int llread(unsigned char *packet)
     return -1;
 }
 
-// Do we need here roles?
+void printStatistics()
+{
+    // TODO: se for receiver ele nao tem acceso ao sended bytes.
+    // TODO: adicioanr mais estatistica.
+    printf("\n============================\n");
+    printf("Number of bytes sended: %lu\n", statistics.bytes_readed);
+    printf("============================\n");
+}
+
 int llclose(int showStatistics)
 {
-    // TODO: show Statistics!
-    printf("DISCONNECT\n");
     if(connectionParameters.role == LlTx)
     {
         if(receivePacketRetransmission(fd, A_SEND, C_DISC, A_SEND, C_DISC)) return -1;
@@ -576,8 +580,7 @@ int llclose(int showStatistics)
     }
 
     if(disconnectFD(fd)) return -1;
-    return 0;
-
+    if(showStatistics) printStatistics();
     return 1;
 }
 

@@ -7,7 +7,7 @@
 #include "application_layer.h"
 
 #include "link_layer.h" // TODO: Delete this when application layer is done
-
+#include <unistd.h>
 #define BAUDRATE 9600
 #define N_TRIES 3
 #define TIMEOUT 4
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
     if (strcmp(role, "tx") == 0) {
         file = fopen(filename, "rb");
         while ((bytesRead = fread(buffer, 1, 1000, file))) {
-            printf("Estou no while\n");
+            sleep(1);
             llwrite(buffer, bytesRead);
         }
     } else {
@@ -75,8 +75,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    if(strcmp(role, "rx") == 0) llclose(0);
-    if(strcmp(role, "tx") == 0) llclose(0);
+    if(strcmp(role, "rx") == 0) llclose(1);
+    if(strcmp(role, "tx") == 0) llclose(1);
 
     return 0;
 }
