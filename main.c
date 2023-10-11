@@ -42,41 +42,36 @@ int main(int argc, char *argv[])
            TIMEOUT,
            filename);
 
-    // applicationLayer(serialPort, role, BAUDRATE, N_TRIES, TIMEOUT, filename);
+    applicationLayer(serialPort, role, BAUDRATE, N_TRIES, TIMEOUT, filename);
     
 
-    LinkLayer connectionParametersApp;
-    strncpy(connectionParametersApp.serialPort, argv[1], sizeof(connectionParametersApp.serialPort)-1);
-    connectionParametersApp.role = strcmp(role, "tx") ? LlRx : LlTx; 
-    connectionParametersApp.baudRate = BAUDRATE;
-    connectionParametersApp.nRetransmissions = N_TRIES;
-    connectionParametersApp.timeout = TIMEOUT;
     
-    if(strcmp(role, "rx") == 0) llopen(connectionParametersApp);
-    if(strcmp(role, "tx") == 0) llopen(connectionParametersApp);
+    
+    // if(strcmp(role, "rx") == 0) llopen(connectionParametersApp);
+    // if(strcmp(role, "tx") == 0) llopen(connectionParametersApp);
 
 
-    FILE *file = NULL;
-    unsigned char *buffer = (unsigned char *)malloc(1000);
-    size_t bytesRead = 0;
+    // FILE *file = NULL;
+    // unsigned char *buffer = (unsigned char *)malloc(1000);
+    // size_t bytesRead = 0;
 
-    if (strcmp(role, "tx") == 0) {
-        file = fopen(filename, "rb");
-        while ((bytesRead = fread(buffer, 1, 1000, file))) {
-            sleep(1);
-            llwrite(buffer, bytesRead);
-        }
-    } else {
-        file = fopen(filename, "w");
-        unsigned char *packet = (unsigned char *) malloc(1000 + 100);
-        while ((bytesRead = llread(packet))) {
-            fwrite(packet, 1, bytesRead, file);
-            if (bytesRead < 1000) break;
-        }
-    }
+    // if (strcmp(role, "tx") == 0) {
+    //     file = fopen(filename, "rb");
+    //     while ((bytesRead = fread(buffer, 1, 1000, file))) {
+    //         sleep(1);
+    //         llwrite(buffer, bytesRead);
+    //     }
+    // } else {
+    //     file = fopen(filename, "w");
+    //     unsigned char *packet = (unsigned char *) malloc(1000 + 100);
+    //     while ((bytesRead = llread(packet))) {
+    //         fwrite(packet, 1, bytesRead, file);
+    //         if (bytesRead < 1000) break;
+    //     }
+    // }
 
-    if(strcmp(role, "rx") == 0) llclose(1);
-    if(strcmp(role, "tx") == 0) llclose(1);
+    // if(strcmp(role, "rx") == 0) llclose(1);
+    // if(strcmp(role, "tx") == 0) llclose(1);
 
     return 0;
 }
