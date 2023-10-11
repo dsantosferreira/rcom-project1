@@ -34,7 +34,7 @@ unsigned char * itouchar(size_t file_size, unsigned char *size)
     if (size == NULL) return NULL; 
     
     unsigned char * bytes = malloc(100); 
-    if (*bytes == NULL) return NULL; 
+    if (bytes == NULL) return NULL; 
     
     size_t indx = 0;
 
@@ -67,11 +67,13 @@ size_t uchartoi (unsigned char n, unsigned char * numbers)
 // C TLV TLV ; file_size = L0 * 256^0 + L1 * 256^1 + L2 * 256^2....
 int sendPacketControl(unsigned char C, char * filename, size_t file_size)
 {
+    if(filename == NULL) return -1;
+    
     unsigned char L1 = 0;
     unsigned char * V1 = itouchar(file_size, &L1);
     if(V1 == NULL) return -1;
 
-    unsigned char L2 = strlen(filename);
+    unsigned char L2 = (unsigned char) strlen(filename);
     unsigned char *packet = (unsigned char *) malloc(5 + L1 + L2);
     if(packet == NULL) return -1;
 
