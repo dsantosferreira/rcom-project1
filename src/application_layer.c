@@ -12,6 +12,7 @@
 
 #define T_FILESIZE 0
 #define T_FILENAME 1
+#define MAX_PAYLOAD_SIZE 1000
 
 #define MAX_FILENAME 50
 
@@ -105,16 +106,14 @@ int sendPacketControl(unsigned char C, const char * filename, size_t file_size)
     return res;
 }
 
-unsigned char * readPacketData(unsigned char *buff)
+unsigned char * readPacketData(unsigned char *buff, size_t *newSize)
 {
-    if(buff == NULL) return NULL;
-    size_t nBytes = buff[1] * 256 + buff[2];
-    unsigned char * data = (unsigned char *) malloc(nBytes);
-    if (data == NULL) return NULL;
-    
-    memcpy(data, buff + 3, nBytes);
-    
-    return data;
+    if (buff == NULL) return NULL;
+    if (buff[0] != DATA) return NULL;
+
+    *newSize = buff[1] * 256 + buff[2];
+
+    return buff + 3;
 }
 
 // Ciclo for com numero de TLVs, switch para saber que TLV é que é, retornar erro se T > 1 ou T < 0 (?)
@@ -159,29 +158,63 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         perror("Error in llopen'\n");
         return;
     }
-
     
-    if (connectionParametersApp.role == LlTx) {
-        sendPacketControl(C_START, filename, 11000);
-    } else {
-        
-        char * file_name = malloc(MAX_FILENAME);
-        unsigned char * buf = malloc(1000); // TODO: check
-        size_t file_size;
-        FILE *file;
-        while(stateReceive != RECV_END){
-            if(llread(buf) == -1) printf("error\n");
-            if(buf[0] == C_START || buf[0] == C_END){
 
+    if (connectionParametersApp.role == LlTx) {
+
+        size_t bytesRead = 0;
+        unsigned char *buffer = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+        if(buffer == NULL) printf("167 error\n");
+        FILE* file = fopen(filename, "rb");
+
+        fseek(file, 0, SEEK_END);
+        size_t file_size = ftell(file);
+        rewind(file);
+
+        if(sendPacketControl(C_START, filename, file_size) == -1) printf("170 error\n");
+
+        while ((bytesRead = fread(buffer, 1, MAX_PAYLOAD_SIZE, file)) > 0) {
+            size_t sended_bytes = 0;
+            sended_bytes = sendPacketData(bytesRead, buffer);
+            if(sended_bytes == -1) printf("error\n");
+
+            printf("line 172: %lu\n", sended_bytes);
+            if(bytesRead < MAX_PAYLOAD_SIZE){
+                if(sendPacketControl(C_END, filename, file_size) == -1) printf("179 error\n");
+                fclose(file);
+                break;
+            }
+        }
+    } else {
+        char * file_name = malloc(MAX_FILENAME);
+        unsigned char * buf = malloc(MAX_PAYLOAD_SIZE + 200); // TODO: check
+        unsigned char * packet = malloc(MAX_PAYLOAD_SIZE + 100);
+        if(file_name == NULL || buf == NULL || packet == NULL) printf("error\n");
+
+        size_t file_size = 0;
+        FILE *file = fopen(filename, "w");
+        size_t bytes_readed = 0;
+        
+        while(stateReceive != RECV_END){
+            bytes_readed = llread(buf);
+            if(bytes_readed == -1) printf("197 error\n");
+            
+            if(buf[0] == C_START || buf[0] == C_END){
+                if(readPacketControl(buf, &file_size, file_name) == -1) printf("200 error\n");
             }else if(buf[0] == DATA){
+
+                packet = readPacketData(buf, &bytes_readed);
+                if(packet == NULL) printf("203 error\n");
+
+                fwrite(packet, 1, bytes_readed, file);
                 
             }
-            
         }
+        fclose(file);
     }
 
 
-    if (llclose(0) == -1) {
+    if (llclose(1) == -1) {
         perror("Error in llclose'\n");
         return;
     }
