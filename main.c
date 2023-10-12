@@ -43,12 +43,6 @@ int main(int argc, char *argv[])
     applicationLayer(serialPort, role, BAUDRATE, N_TRIES, TIMEOUT, filename);
     
 
-    
-    
-    // if(strcmp(role, "rx") == 0) llopen(connectionParametersApp);
-    // if(strcmp(role, "tx") == 0) llopen(connectionParametersApp);
-
-
     // FILE *file = NULL;
     // unsigned char *buffer = (unsigned char *)malloc(1000);
     // size_t bytesRead = 0;
@@ -68,8 +62,6 @@ int main(int argc, char *argv[])
     //     }
     // }
 
-    // if(strcmp(role, "rx") == 0) llclose(1);
-    // if(strcmp(role, "tx") == 0) llclose(1);
 
     return 0;
 }

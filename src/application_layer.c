@@ -65,7 +65,7 @@ size_t uchartoi (unsigned char n, unsigned char * numbers)
 }
 
 // C TLV TLV ; file_size = L0 * 256^0 + L1 * 256^1 + L2 * 256^2....
-int sendPacketControl(unsigned char C, char * filename, size_t file_size)
+int sendPacketControl(unsigned char C, const char * filename, size_t file_size)
 {
     if(filename == NULL) return -1;
     
@@ -133,6 +133,7 @@ int readPacketControl(unsigned char * buff, size_t * file_size, char * file_name
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
+    if(serialPort == NULL || role == NULL || filename == NULL) printf("some arguments are null\n");
     LinkLayer connectionParametersApp;
     strncpy(connectionParametersApp.serialPort, serialPort, sizeof(connectionParametersApp.serialPort)-1);
     connectionParametersApp.role = strcmp(role, "tx") ? LlRx : LlTx; 
@@ -145,7 +146,19 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         return;
     }
 
-    // See showStatistics
+    
+    if (connectionParametersApp.role == LlTx) {
+        sendPacketControl(C_START, filename, 11000);
+    } else {
+        char receivedFileName[100];
+        size_t fileSize = 0;
+        unsigned char * buffer = malloc(200);
+        llread(buffer);
+        readPacketControl(buffer, &fileSize, receivedFileName); 
+        printf("Control packet received. File name: %s, File size: %zu bytes.\n", receivedFileName, fileSize);
+    }
+
+
     if (llclose(0) == -1) {
         perror("Error in llclose'\n");
         return;
