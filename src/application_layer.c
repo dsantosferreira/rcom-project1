@@ -13,6 +13,16 @@
 #define T_FILESIZE 0
 #define T_FILENAME 1
 
+#define MAX_FILENAME 50
+
+enum state{
+    RECV_START,
+    RECV_CONT,
+    RECV_END
+};
+
+enum state stateReceive = RECV_START;
+
 int sendPacketData(size_t nBytes, unsigned char *data) 
 {
     if(data == NULL) return -1;
@@ -112,7 +122,11 @@ int readPacketControl(unsigned char * buff, size_t * file_size, char * file_name
 {   
     if (buff == NULL || file_size == NULL || file_name == NULL) return -1;
     size_t indx = 0;
-    if (buff[indx] != C_START && buff[indx] != C_END) return -1; 
+
+    if(buff[indx] == C_START) stateReceive = RECV_CONT;
+    else if(buff[indx] == C_END) stateReceive = RECV_END;
+    else return -1;
+
     indx++;
     if (buff[indx++] != T_FILESIZE) return -1;
     unsigned char L1 = buff[indx++];
@@ -150,12 +164,20 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     if (connectionParametersApp.role == LlTx) {
         sendPacketControl(C_START, filename, 11000);
     } else {
-        char receivedFileName[100];
-        size_t fileSize = 0;
-        unsigned char * buffer = malloc(200);
-        llread(buffer);
-        readPacketControl(buffer, &fileSize, receivedFileName); 
-        printf("Control packet received. File name: %s, File size: %zu bytes.\n", receivedFileName, fileSize);
+        
+        char * file_name = malloc(MAX_FILENAME);
+        unsigned char * buf = malloc(1000); // TODO: check
+        size_t file_size;
+        FILE *file;
+        while(stateReceive != RECV_END){
+            if(llread(buf) == -1) printf("error\n");
+            if(buf[0] == C_START || buf[0] == C_END){
+
+            }else if(buf[0] == DATA){
+                
+            }
+            
+        }
     }
 
 
