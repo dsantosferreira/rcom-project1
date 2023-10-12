@@ -27,40 +27,41 @@ enum state stateReceive = RECV_START;
 int sendPacketData(size_t nBytes, unsigned char *data) 
 {
     if(data == NULL) return -1;
-
-    unsigned int L2 = nBytes / 256, L1 = nBytes % 256;
     
     unsigned char *packet = (unsigned char *) malloc(nBytes + 3);
+    if(packet == NULL) return -1;
     
     packet[0] = DATA;
-    packet[1] = L2;
-    packet[2] = L1;
+    packet[1] = nBytes / 256;
+    packet[2] = nBytes % 256;
     memcpy(packet + 3, data, nBytes);
 
-    return llwrite(packet, nBytes + 3);
+    int result = llwrite(packet, nBytes + 3);
+
+    free(packet);
+
+    return result;
 }
 
-unsigned char * itouchar(size_t file_size, unsigned char *size)
+unsigned char * itouchar(size_t value, unsigned char *size)
 {
     if (size == NULL) return NULL; 
     
-    unsigned char * bytes = malloc(100); 
-    if (bytes == NULL) return NULL; 
+    size_t tmp_value = value;
+    size_t length = 0;
+    do {
+        length++;
+        tmp_value >>= 8;
+    } while (tmp_value);
+
+    unsigned char *bytes = malloc(length);
+    if (bytes == NULL) return NULL;
     
-    size_t indx = 0;
 
-    if(file_size == 0) {
-        bytes[indx++] = 0;
-    } else {
-        while (file_size != 0) {
-            bytes[indx++] = file_size % 256; 
-            file_size = file_size / 256;
-        }
-    }
+    for (size_t i = 0; i < length; i++, value >>= 8)
+        bytes[i] = value & 0xFF;
 
-    bytes = realloc(bytes, indx);
-
-    *size = (int) indx;
+    *size = length;
     return bytes;
 }
 
@@ -146,7 +147,11 @@ int readPacketControl(unsigned char * buff, size_t * file_size, char * file_name
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
-    if(serialPort == NULL || role == NULL || filename == NULL) printf("some arguments are null\n");
+    if(serialPort == NULL || role == NULL || filename == NULL){
+        perror("Initialization error: One or more required arguments are NULL.");
+        return;
+    } 
+        
     LinkLayer connectionParametersApp;
     strncpy(connectionParametersApp.serialPort, serialPort, sizeof(connectionParametersApp.serialPort)-1);
     connectionParametersApp.role = strcmp(role, "tx") ? LlRx : LlTx; 
@@ -155,59 +160,90 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     connectionParametersApp.timeout = timeout;
 
     if (llopen(connectionParametersApp) == -1) {
-        perror("Error in llopen'\n");
+        perror("Link layer error: Failed to open the connection.");
         return;
     }
     
-
     if (connectionParametersApp.role == LlTx) {
-
         size_t bytesRead = 0;
         unsigned char *buffer = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
-        if(buffer == NULL) printf("167 error\n");
+        if(buffer == NULL) {
+            perror("Memory allocation error at buffer creation.");
+            return;
+        }
+
         FILE* file = fopen(filename, "rb");
+        if(file == NULL) {
+            perror("File error: Unable to open the file for reading.");
+            return;
+        }
 
         fseek(file, 0, SEEK_END);
         size_t file_size = ftell(file);
         rewind(file);
 
-        if(sendPacketControl(C_START, filename, file_size) == -1) printf("170 error\n");
+        if(sendPacketControl(C_START, filename, file_size) == -1) {
+            perror("Transmission error: Failed to send the START packet control.");
+            return;
+        }
 
         while ((bytesRead = fread(buffer, 1, MAX_PAYLOAD_SIZE, file)) > 0) {
             size_t sended_bytes = 0;
             sended_bytes = sendPacketData(bytesRead, buffer);
-            if(sended_bytes == -1) printf("error\n");
+            if(sended_bytes == -1){
+                perror("Transmission error: Failed to send the DATA packet control.");
+                return;
+            }
 
-            printf("line 172: %lu\n", sended_bytes);
             if(bytesRead < MAX_PAYLOAD_SIZE){
-                if(sendPacketControl(C_END, filename, file_size) == -1) printf("179 error\n");
+                if(sendPacketControl(C_END, filename, file_size) == -1){
+                    perror("Transmission error: Failed to send the END packet control.");
+                    return;
+                }
                 fclose(file);
                 break;
             }
         }
-    } else {
+    } 
+    
+    if (connectionParametersApp.role == LlRx) {
         char * file_name = malloc(MAX_FILENAME);
-        unsigned char * buf = malloc(MAX_PAYLOAD_SIZE + 200); // TODO: check
-        unsigned char * packet = malloc(MAX_PAYLOAD_SIZE + 100);
-        if(file_name == NULL || buf == NULL || packet == NULL) printf("error\n");
+        unsigned char * buf = malloc(MAX_PAYLOAD_SIZE * 2); // TODO: check
+        unsigned char * packet = malloc(MAX_PAYLOAD_SIZE * 2);
+        if(file_name == NULL || buf == NULL || packet == NULL){
+            perror("Initialization error: One or more buffers pointers are NULL.");
+            return;
+        }
+
+        
+        FILE *file = fopen(filename, "w");
+        if(file == NULL) {
+            perror("File error: Unable to open the file for writing.");
+            return;
+        }
 
         size_t file_size = 0;
-        FILE *file = fopen(filename, "w");
         size_t bytes_readed = 0;
         
         while(stateReceive != RECV_END){
             bytes_readed = llread(buf);
-            if(bytes_readed == -1) printf("197 error\n");
+            if(bytes_readed == -1) {
+                perror("Link layer error: Failed to read from the link.");
+                break;
+            }
             
             if(buf[0] == C_START || buf[0] == C_END){
-                if(readPacketControl(buf, &file_size, file_name) == -1) printf("200 error\n");
+                if(readPacketControl(buf, &file_size, file_name) == -1) {
+                    perror("Packet error: Failed to read control packet.");
+                    break;;
+                }
             }else if(buf[0] == DATA){
-
                 packet = readPacketData(buf, &bytes_readed);
-                if(packet == NULL) printf("203 error\n");
-
+                if(packet == NULL) {
+                    perror("Packet error: Failed to read data packet.");
+                    break;
+                }
                 fwrite(packet, 1, bytes_readed, file);
-                
             }
         }
         fclose(file);
@@ -215,7 +251,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
 
     if (llclose(1) == -1) {
-        perror("Error in llclose'\n");
+        perror("Link layer error: Failed to close the connection.");
         return;
     }
 }
