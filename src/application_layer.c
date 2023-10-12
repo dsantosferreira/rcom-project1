@@ -107,16 +107,25 @@ unsigned char * readPacketData(unsigned char *buff)
     return data;
 }
 
+// Ciclo for com numero de TLVs, switch para saber que TLV é que é, retornar erro se T > 1 ou T < 0 (?)
 int readPacketControl(unsigned char * buff, size_t * file_size, char * file_name)
 {   
-    size_t idx = 1;
+    if (buff == NULL || file_size == NULL || file_name == NULL) return -1;
+    size_t indx = 0;
+    if (buff[indx] != C_START && buff[indx] != C_END) return -1; 
+    indx++;
+    if (buff[indx++] != T_FILESIZE) return -1;
+    unsigned char L1 = buff[indx++];
+    unsigned char * V1 = malloc(L1);
+    if(V1 == NULL) return -1;
+    memcpy(V1, buff + indx, L1); indx += L1;
+    *file_size = uchartoi(L1, V1);
+    free(V1);
 
-    // Ciclo for com numero de TLVs, switch para saber que TLV é que é, retornar erro se T > 1 ou T < 0 (?)
-
-    unsigned char size_bytes = buff[idx++];
-    unsigned char *sizes = (unsigned char *) malloc(size_bytes);
-    memcpy(sizes, buff + idx, size_bytes); idx += size_bytes;
-    *file_size = uchartoi(size_bytes, sizes);
+    if(buff[indx++] != T_FILENAME) return -1;
+    unsigned char L2 = buff[indx++];
+    memcpy(file_name, buff + indx, L2);
+    file_name[L2] = '\0';
 
     return 0;
 }

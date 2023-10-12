@@ -6,8 +6,6 @@
 #include <string.h>
 #include "application_layer.h"
 
-#include "link_layer.h" // TODO: Delete this when application layer is done
-#include <unistd.h>
 #define BAUDRATE 9600
 #define N_TRIES 3
 #define TIMEOUT 4
