@@ -12,7 +12,6 @@
 
 #define T_FILESIZE 0
 #define T_FILENAME 1
-#define MAX_PAYLOAD_SIZE 1000
 
 #define MAX_FILENAME 50
 
@@ -32,8 +31,8 @@ int sendPacketData(size_t nBytes, unsigned char *data)
     if(packet == NULL) return -1;
     
     packet[0] = DATA;
-    packet[1] = nBytes / 256;
-    packet[2] = nBytes % 256;
+    packet[1] = nBytes / 256; // nBytes && (0xfff....ff - 0xFF) 0x12BDHEBE11
+    packet[2] = nBytes % 256; // nBytes && 0xFF
     memcpy(packet + 3, data, nBytes);
 
     int result = llwrite(packet, nBytes + 3);
@@ -70,7 +69,7 @@ size_t uchartoi (unsigned char n, unsigned char * numbers)
     if(numbers == NULL) return 0; // TODO: check later
     int value = 0;
     int power = 1;
-    for(int i = 0; i < n; i++, power *= 256){
+    for(int i = 0; i < n; i++, power <<= 8){
         value += numbers[i] * power;
     }
     return (size_t) value;
@@ -150,7 +149,19 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     if(serialPort == NULL || role == NULL || filename == NULL){
         perror("Initialization error: One or more required arguments are NULL.");
         return;
-    } 
+    }
+
+    /* Is baudrate the number of bytes to be sent in each packet?
+    if (baudRate > MAX_PAYLOAD_SIZE) {
+        perror("Baudrate given is larger than max payload size'\n");
+        return;
+    }
+    */
+
+    if (strlen(filename) > MAX_FILENAME) {
+        printf("The lenght of the given file name is greater than what is supported: %d characters'\n", MAX_FILENAME);
+        return;
+    }
         
     LinkLayer connectionParametersApp;
     strncpy(connectionParametersApp.serialPort, serialPort, sizeof(connectionParametersApp.serialPort)-1);
@@ -166,7 +177,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     
     if (connectionParametersApp.role == LlTx) {
         size_t bytesRead = 0;
-        unsigned char *buffer = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+        unsigned char *buffer = (unsigned char *) malloc(MAX_PAYLOAD_SIZE + 20);
         if(buffer == NULL) {
             perror("Memory allocation error at buffer creation.");
             return;
@@ -194,29 +205,27 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 perror("Transmission error: Failed to send the DATA packet control.");
                 return;
             }
-
-            if(bytesRead < MAX_PAYLOAD_SIZE){
-                if(sendPacketControl(C_END, filename, file_size) == -1){
-                    perror("Transmission error: Failed to send the END packet control.");
-                    return;
-                }
-                fclose(file);
-                break;
-            }
         }
+
+        if(sendPacketControl(C_END, filename, file_size) == -1){
+            perror("Transmission error: Failed to send the END packet control.");
+            return;
+        }
+
+        fclose(file);
     } 
     
     if (connectionParametersApp.role == LlRx) {
         char * file_name = malloc(MAX_FILENAME);
-        unsigned char * buf = malloc(MAX_PAYLOAD_SIZE * 2); // TODO: check
-        unsigned char * packet = malloc(MAX_PAYLOAD_SIZE * 2);
+        unsigned char * buf = malloc(MAX_PAYLOAD_SIZE + 20);
+        unsigned char * packet = malloc(MAX_PAYLOAD_SIZE + 20);
         if(file_name == NULL || buf == NULL || packet == NULL){
             perror("Initialization error: One or more buffers pointers are NULL.");
             return;
         }
 
         
-        FILE *file = fopen(filename, "w");
+        FILE *file = fopen(filename, "wb");
         if(file == NULL) {
             perror("File error: Unable to open the file for writing.");
             return;
@@ -246,6 +255,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 fwrite(packet, 1, bytes_readed, file);
             }
         }
+
+        
+
         fclose(file);
     }
 
