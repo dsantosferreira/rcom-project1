@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include<unistd.h>
 
 #define DATA 1
 #define C_START 2
@@ -201,6 +202,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         while ((bytesRead = fread(buffer, 1, MAX_PAYLOAD_SIZE, file)) > 0) {
             size_t sended_bytes = 0;
             sended_bytes = sendPacketData(bytesRead, buffer);
+            sleep(1);
             if(sended_bytes == -1){
                 perror("Transmission error: Failed to send the DATA packet control.");
                 return;

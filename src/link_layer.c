@@ -9,6 +9,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/time.h>
 
 #include "link_layer.h"
 
@@ -65,15 +66,16 @@ int alarmCount = 0;
 int fd;
 unsigned char C_Ns = 0; // Ns
 unsigned char C_Nr = 0; // Nr (o valor que ele espera de receber)
+struct timeval start;
 
-int connectFD(const char * port)
+int connectFD(LinkLayer connectionParametersApp)
 {
-    if(port == NULL) return -1;
-    fd = open(port, O_RDWR | O_NOCTTY);
+    if(connectionParametersApp.serialPort == NULL) return -1;
+    fd = open(connectionParametersApp.serialPort, O_RDWR | O_NOCTTY);
 
     if (fd < 0)
     {
-        perror(port);
+        perror(connectionParametersApp.serialPort);
         return -1;
     }
 
@@ -90,7 +92,7 @@ int connectFD(const char * port)
     // Clear struct for new port settings
     memset(&newtio, 0, sizeof(newtio));
 
-    newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
+    newtio.c_cflag = connectionParametersApp.baudRate | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
 
@@ -268,9 +270,10 @@ int receivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char 
 
 int llopen(LinkLayer connectionParametersApp)
 {
+    gettimeofday(&start, NULL);
     memcpy(&connectionParameters, &connectionParametersApp, sizeof(connectionParametersApp));
 
-    fd = connectFD(connectionParameters.serialPort);
+    fd = connectFD(connectionParameters);
     if(fd < 0) return -1;
 
     if(connectionParameters.role == LlTx){
@@ -418,10 +421,11 @@ int llwrite(const unsigned char *buf, int bufSize)
         {
             if(C_received == REJ0 || C_received == REJ1){ // timerCounter-- dá-se reset ao alarm?
                 alarmEnabled = TRUE;
+                alarmCount = 0; // Perguntar se isto está certo
                 printf("Received reject; Second try.\n");
             }
             if(C_received == RR0 || C_received == RR1) {
-                // alarmDisable(); Vai comecar fazer alarmCount de 0. or alarm(0)?
+                alarmDisable(); // Vai comecar fazer alarmCount de 0. or alarm(0)?
                 C_Ns = 1 - C_Ns;
                 return bufSize; // CHECK THIS OR newSize + 6? 
             }
@@ -536,13 +540,17 @@ int llread(unsigned char *packet)
                     } 
 
                     if(send_packet_command(fd, A_respons, C_respons)) return -1;
+
+                    enum_state = START;
+
+                    if (C_respons == REJ0 || C_respons == REJ1) break;
+
                     if((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)){
                         C_Nr = 1 - C_Nr;
                         printf("Bytes received: %d\n", newSize);
                         statistics.bytes_readed += newSize;
                         return newSize;
                     } 
-                    enum_state = START;
                     printf("Received duplicate\n");
                 }else packet[pkt_indx++] = byte;
                 
@@ -562,6 +570,12 @@ void printStatistics()
     printf("\n============================\n");
     printf("Number of bytes sended: %lu\n", statistics.bytes_readed);
     printf("============================\n");
+
+    struct timeval end;
+    gettimeofday(&end, NULL);
+    double time_spent = (end.tv_sec - start.tv_sec) + 
+                        (end.tv_usec - start.tv_usec) / 1e6;
+    printf("Time taken to download file: %f seconds\n", time_spent);
 }
 
 int llclose(int showStatistics)
