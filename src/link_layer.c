@@ -45,6 +45,11 @@
 typedef struct
 {
     size_t bytes_readed;
+    unsigned int nFrames;       // Number of good frames sent/received
+    unsigned int frames_size;   // Size of good frames sent
+    double time_send_control;   // Time spent on sending control frames
+    double time_send_data;      // Time spent on sending data frames
+    struct timeval start;       // When program starts
 } Statistics;
 
 enum state{
@@ -59,14 +64,13 @@ enum state{
 };
 
 LinkLayer connectionParameters;
-Statistics statistics = {0};
+Statistics statistics = {0, 0, 0, 0.0, 0.0};
 struct termios oldtio;
 int alarmEnabled = FALSE;
 int alarmCount = 0;
 int fd;
 unsigned char C_Ns = 0; // Ns
 unsigned char C_Nr = 0; // Nr (o valor que ele espera de receber)
-struct timeval start;
 
 int connectFD(LinkLayer connectionParametersApp)
 {
@@ -141,7 +145,6 @@ void alarmDisable()
 
 int send_packet_command(int fd, unsigned char A, unsigned char C)
 {
-    // SET command
     unsigned char buf[FRAME_SIZE] = {FLAG, A, C, 0, FLAG};
     buf[3] = buf[1] ^ buf[2];
     
@@ -153,13 +156,10 @@ int send_packet_command(int fd, unsigned char A, unsigned char C)
     return 0;
 }
 
-// Check in pratical class --> Add timer of +- 10 seconds to timeout if the packet isn't received
 int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED) 
 {
     enum state enum_state = START;
     
-    //(void)signal(SIGALRM, alarmHandler);
-    //alarm(connectionParameters.timeout * connectionParameters.nRetransmissions + 1); 
     while (enum_state != STOP)
     {
         unsigned char byte = 0;
@@ -198,7 +198,6 @@ int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED)
                 enum_state = START;
             }
         }
-        // if(alarmEnabled) return -1;
     }
     
     return 0; 
@@ -270,7 +269,7 @@ int receivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char 
 
 int llopen(LinkLayer connectionParametersApp)
 {
-    gettimeofday(&start, NULL);
+    gettimeofday(&statistics.start, NULL);
     memcpy(&connectionParameters, &connectionParametersApp, sizeof(connectionParametersApp));
 
     fd = connectFD(connectionParameters);
@@ -282,10 +281,12 @@ int llopen(LinkLayer connectionParametersApp)
     }
     if(connectionParameters.role == LlRx){
         if(receivePacket(fd, A_SEND, C_SET)) return -1;
+        statistics.nFrames++;
+        statistics.bytes_readed += 5;
         if(send_packet_command(fd, A_SEND, C_UA)) return -1;
         printf("Connection established\n");
     }
-    return 1; // TODO: Return fd?
+    return 1;
 }
 
 void print_answer(const unsigned char *answer, int n)
@@ -326,8 +327,6 @@ const unsigned char * byteStuffing(const unsigned char *buf, int bufSize, int *n
 int llwrite(const unsigned char *buf, int bufSize)
 {
     // TODO: Verificar lógica da mudança de valor de C_Ns
-    // TODO: Retornar número de bytes escritos
-    // TODO: Temos que ter newBuf, nao podemos usar so buf? ou free(buf)? Calcular bcc2 logo no inicio.
     if(buf == NULL) return -1;
 
     int newSize;
@@ -376,7 +375,7 @@ int llwrite(const unsigned char *buf, int bufSize)
         int bytes;
         if((bytes = read(fd, &byte, sizeof(byte))) < 0)
         {
-            perror("Error read ... command");
+            perror("Error read command");
             return -1;
         }
         if(bytes > 0){
@@ -425,7 +424,7 @@ int llwrite(const unsigned char *buf, int bufSize)
                 printf("Received reject; Second try.\n");
             }
             if(C_received == RR0 || C_received == RR1) {
-                alarmDisable(); // Vai comecar fazer alarmCount de 0. or alarm(0)?
+                alarmDisable();
                 C_Ns = 1 - C_Ns;
                 return bufSize; // CHECK THIS OR newSize + 6? 
             }
@@ -482,7 +481,6 @@ int llread(unsigned char *packet)
     size_t pkt_indx = 0; // o index atual de escrita na packet.
     while (enum_state != STOP)
     {
-        //printf("state: %d\n", enum_state);
         unsigned char byte = 0;
         int bytes;
         if((bytes = read(fd, &byte, sizeof(byte))) < 0)
@@ -504,7 +502,6 @@ int llread(unsigned char *packet)
                 else enum_state = START;
                 break;
             case A_RCV:
-                //printf("byte = 0x%02X\n", byte);
                 if(byte == C_INF0 || byte == C_INF1){
                     enum_state = C_RCV;
                     C_received = byte;
@@ -523,36 +520,37 @@ int llread(unsigned char *packet)
                     int newSize = 0;
                     unsigned char bcc2_received = 0;
                     
-                    if(byteDestuffing(packet, pkt_indx, &newSize, &bcc2_received)) return -1;
+                    if (byteDestuffing(packet, pkt_indx, &newSize, &bcc2_received)) return -1;
 
                     unsigned char bcc2 = 0x00;
-                    for(size_t i = 0; i < newSize; i++) bcc2 ^= packet[i];
+                    for (size_t i = 0; i < newSize; i++) bcc2 ^= packet[i];
 
                     unsigned char C_respons, A_respons;
 
-                    if(bcc2 == bcc2_received) {
+                    if (bcc2 == bcc2_received) {
                         C_respons = (C_received == C_INF0)? RR1 : RR0;
                         A_respons = A_SEND;
                     }
-                    else{
+                    else {
                         C_respons = (C_received == C_INF0)? REJ0 : REJ1;
                         A_respons = A_RECV;
                     } 
 
-                    if(send_packet_command(fd, A_respons, C_respons)) return -1;
+                    if (send_packet_command(fd, A_respons, C_respons)) return -1;
 
                     enum_state = START;
 
                     if (C_respons == REJ0 || C_respons == REJ1) break;
 
-                    if((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)){
+                    if ((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)){
                         C_Nr = 1 - C_Nr;
                         printf("Bytes received: %d\n", newSize);
                         statistics.bytes_readed += newSize;
+                        statistics.nFrames++;
                         return newSize;
                     } 
                     printf("Received duplicate\n");
-                }else packet[pkt_indx++] = byte;
+                } else packet[pkt_indx++] = byte;
                 
                 break;
             default:
@@ -565,17 +563,49 @@ int llread(unsigned char *packet)
 
 void printStatistics()
 {
+    printf("\n======== Statistics ========\n");
     // TODO: se for receiver ele nao tem acceso ao sended bytes.
     // TODO: adicioanr mais estatistica.
-    printf("\n============================\n");
-    printf("Number of bytes sended: %lu\n", statistics.bytes_readed);
-    printf("============================\n");
 
+    // TODO: Número de bytes totais recebidos pelo recetor (antes de destuffing)
+
+    // Número de bytes totais recebidos pelo recetor (após destuffing)
+
+    // Time taken to download file
     struct timeval end;
     gettimeofday(&end, NULL);
-    double time_spent = (end.tv_sec - start.tv_sec) + 
-                        (end.tv_usec - start.tv_usec) / 1e6;
-    printf("Time taken to download file: %f seconds\n", time_spent);
+    double time_spent = (end.tv_sec - statistics.start.tv_sec) + 
+                        (end.tv_usec - statistics.start.tv_usec) / 1e6;
+
+    // TODO: Número de frames recebidas. Só no recetor
+    if (connectionParameters.role == LlRx) {
+        // Número de bytes totais recebidos pelo recetor (após destuffing)
+        printf("\n============================\n");
+        printf("Number of bytes received (after destuffing): %lu\n", statistics.bytes_readed);
+        printf("============================\n");
+
+        // Número de frames recebidos
+        printf("\n============================\n");
+        printf("Number of good frames received: %d frames\n", statistics.nFrames);
+        printf("============================\n");
+
+        // Tamanho necessário para transferir o ficheiro completo
+        printf("\n============================\n");
+        printf("Time taken to download file: %f seconds\n", time_spent);
+        printf("============================\n");
+
+        // TODO: Tamanho médio das frames só no recetor
+    }
+
+    else {
+        // TODO: Tempo que se passa a mandar frames de controlo só no transmissor
+
+
+        // TODO: Tempo que se passa a mandar frames de dados só no transmissor
+
+
+        // TODO: Tempo médio que demora a mandar uma frame só no transmissor
+    }
 }
 
 int llclose(int showStatistics)
@@ -589,7 +619,14 @@ int llclose(int showStatistics)
     if(connectionParameters.role == LlRx)
     {
         if(receivePacket(fd, A_SEND, C_DISC)) return -1;
+        statistics.nFrames++;
+        statistics.bytes_readed += 5;
+
+        // Mudar para send_packet_command como o stor tinha dito na aula?
         if(receivePacketRetransmission(fd, A_SEND, C_UA, A_SEND, C_DISC)) return -1;
+        statistics.nFrames++;           // Retirar este linha se se mudar em cima para send_packet_command
+        statistics.bytes_readed += 5;   // Retirar este linha se se mudar em cima para send_packet_command
+
         printf("Disconnected\n");
     }
 

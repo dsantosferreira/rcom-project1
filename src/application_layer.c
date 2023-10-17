@@ -152,13 +152,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         return;
     }
 
-    /* Is baudrate the number of bytes to be sent in each packet?
-    if (baudRate > MAX_PAYLOAD_SIZE) {
-        perror("Baudrate given is larger than max payload size'\n");
-        return;
-    }
-    */
-
     if (strlen(filename) > MAX_FILENAME) {
         printf("The lenght of the given file name is greater than what is supported: %d characters'\n", MAX_FILENAME);
         return;
@@ -202,7 +195,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         while ((bytesRead = fread(buffer, 1, MAX_PAYLOAD_SIZE, file)) > 0) {
             size_t sended_bytes = 0;
             sended_bytes = sendPacketData(bytesRead, buffer);
-            sleep(1);
+            // sleep(1); Uncomment for testing
             if(sended_bytes == -1){
                 perror("Transmission error: Failed to send the DATA packet control.");
                 return;
@@ -257,8 +250,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 fwrite(packet, 1, bytes_readed, file);
             }
         }
-
-        
 
         fclose(file);
     }
