@@ -32,8 +32,8 @@ int sendPacketData(size_t nBytes, unsigned char *data)
     if(packet == NULL) return -1;
     
     packet[0] = DATA;
-    packet[1] = nBytes / 256; // nBytes && (0xfff....ff - 0xFF) 0x12BDHEBE11
-    packet[2] = nBytes % 256; // nBytes && 0xFF
+    packet[1] = nBytes / 256;
+    packet[2] = nBytes % 256;
     memcpy(packet + 3, data, nBytes);
 
     int result = llwrite(packet, nBytes + 3);
@@ -195,7 +195,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         while ((bytesRead = fread(buffer, 1, MAX_PAYLOAD_SIZE, file)) > 0) {
             size_t sended_bytes = 0;
             sended_bytes = sendPacketData(bytesRead, buffer);
-            // sleep(1); Uncomment for testing
+            
+            // Uncomment for testing
+            //sleep(1); 
             if(sended_bytes == -1){
                 perror("Transmission error: Failed to send the DATA packet control.");
                 return;

@@ -44,8 +44,7 @@
 
 typedef struct
 {
-    size_t destuff_bytes_read;  // Number of bytes read after destuffingf
-    size_t stuff_bytes_read;    // Number of bytes read before any destuffing
+    size_t bytes_read;          // Number of bytes read before any destuffing
     unsigned int nFrames;       // Number of good frames sent/received
     unsigned int frames_size;   // Size of good frames sent
     double time_send_control;   // Time spent on sending control frames
@@ -275,6 +274,7 @@ int receivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char 
 int llopen(LinkLayer connectionParametersApp)
 {
     gettimeofday(&statistics.start, NULL);
+
     memcpy(&connectionParameters, &connectionParametersApp, sizeof(connectionParametersApp));
 
     fd = connectFD(connectionParameters);
@@ -297,8 +297,7 @@ int llopen(LinkLayer connectionParametersApp)
     if(connectionParameters.role == LlRx){
         if(receivePacket(fd, A_SEND, C_SET)) return -1;
         statistics.nFrames++;
-        statistics.destuff_bytes_read += 5;
-        statistics.stuff_bytes_read += 5;
+        statistics.bytes_read += 5;
         if(send_packet_command(fd, A_SEND, C_UA)) return -1;
         printf("Connection established\n");
     }
@@ -347,7 +346,7 @@ int llwrite(const unsigned char *buf, int bufSize)
     int newSize;
     const unsigned char *newBuf = byteStuffing(buf, bufSize, &newSize);
     if(newBuf == NULL) return -1;
-    printf("Bytes sended: %d\n", newSize);
+    printf("Bytes sent: %d\n", newSize);
     unsigned char *trama = (unsigned char *) malloc(newSize + 6);
     if(trama == NULL) return -1;
 
@@ -569,8 +568,7 @@ int llread(unsigned char *packet)
                     if ((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)){
                         C_Nr = 1 - C_Nr;
                         printf("Bytes received: %d\n", newSize);
-                        statistics.stuff_bytes_read += pkt_indx;
-                        statistics.destuff_bytes_read += newSize;
+                        statistics.bytes_read += newSize + 6;
                         statistics.nFrames++;
                         return newSize;
                     } 
@@ -591,52 +589,29 @@ void printStatistics()
     printf("\n======== Statistics ========\n");
 
     if (connectionParameters.role == LlRx) {
-        // TODO: Número de bytes totais recebidos pelo recetor (antes de destuffing)
+        printf("\nNumber of bytes received (after destuffing): %lu\n", statistics.bytes_read);
 
-
-        // Número de bytes totais recebidos pelo recetor (após destuffing)
-        printf("\n============================\n");
-        printf("Number of bytes received (after destuffing): %lu\n", statistics.destuff_bytes_read);
-        printf("============================\n");
-
-        // Número de frames recebidos corretamente 
-        printf("\n============================\n");
-        printf("Number of good frames received: %d frames\n", statistics.nFrames);
-        printf("============================\n");
-
-        // Tempo necessário para transferir o ficheiro completo
+        printf("\nNumber of good frames received: %d frames\n", statistics.nFrames);
 
         struct timeval end;
         gettimeofday(&end, NULL);
 
-        printf("\n============================\n");
-        printf("Time taken to download file: %f seconds\n", get_time_difference(statistics.start, end));
-        printf("============================\n");
+        printf("\nTime taken to download file: %f seconds\n", get_time_difference(statistics.start, end));
 
-        // TODO: Tamanho médio das frames só no recetor
+        printf("\nnAverage size of a frame: %ld bytes per frame\n", statistics.bytes_read / statistics.nFrames);
     }
 
     else {
-        // Número de frames enviados corretamente
-        printf("\n============================\n");
-        printf("Number of good frames sent: %d frames\n", statistics.nFrames);
-        printf("============================\n");
+        printf("\nNumber of good frames sent: %d frames\n", statistics.nFrames);
 
-        // Tempo que se passa a mandar frames de controlo e a certificar que se recebe resposta
-        printf("\n============================\n");
-        printf("Time taken to send and receive confirmation of receival of control frames: %f seconds\n", statistics.time_send_control);
-        printf("============================\n");
+        printf("\nTime taken to send and receive confirmation of receival of control frames: %f seconds\n", statistics.time_send_control);
 
-        // Tempo que se passa a mandar frames de dados e a certificar que se recebe resposta
-        printf("\n============================\n");
-        printf("Time taken to send and receive confirmation of receival of data frames: %f seconds\n", statistics.time_send_data);
-        printf("============================\n");
+        printf("\nTime taken to send and receive confirmation of receival of data frames: %f seconds\n", statistics.time_send_data);
 
-        // TODO: Tempo médio que demora a mandar uma frame só no transmissor
-        printf("\n============================\n");
-        printf("Average time taken to send a frame: %f seconds\n", (statistics.time_send_data + statistics.time_send_control) / statistics.nFrames);
-        printf("============================\n");
+        printf("\nAverage time taken to send a frame: %f seconds\n", (statistics.time_send_data + statistics.time_send_control) / statistics.nFrames);
     }
+
+    printf("\n============================\n");
 }
 
 int llclose(int showStatistics)
@@ -662,12 +637,12 @@ int llclose(int showStatistics)
     {
         if(receivePacket(fd, A_SEND, C_DISC)) return -1;
         statistics.nFrames++;
-        statistics.destuff_bytes_read += 5;
+        statistics.bytes_read += 5;
 
         // Mudar para send_packet_command como o stor tinha dito na aula?
         if(receivePacketRetransmission(fd, A_SEND, C_UA, A_SEND, C_DISC)) return -1;
         statistics.nFrames++;           // Retirar este linha se se mudar em cima para send_packet_command
-        statistics.destuff_bytes_read += 5;   // Retirar este linha se se mudar em cima para send_packet_command
+        statistics.bytes_read += 5;   // Retirar este linha se se mudar em cima para send_packet_command
 
         printf("Disconnected\n");
     }
