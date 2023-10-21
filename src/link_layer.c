@@ -87,7 +87,6 @@ int connectFD(LinkLayer connectionParametersApp)
         return -1;
     }
 
-    
     struct termios newtio;
 
     // Save current port settings
@@ -120,11 +119,12 @@ int connectFD(LinkLayer connectionParametersApp)
 
     printf("New termios structure set\n");
 
-    return fd;
+    return 0;
 }
 
-int disconnectFD(int fd)
+int disconnectFD()
 {
+    printf("CALL DISC FD\n");
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
     {
         perror("tcsetattr");
@@ -147,7 +147,7 @@ void alarmDisable()
     alarmCount = 0;
 }
 
-int send_packet_command(int fd, unsigned char A, unsigned char C)
+int send_packet_command( unsigned char A, unsigned char C)
 {
     unsigned char buf[FRAME_SIZE] = {FLAG, A, C, 0, FLAG};
     buf[3] = buf[1] ^ buf[2];
@@ -160,7 +160,7 @@ int send_packet_command(int fd, unsigned char A, unsigned char C)
     return 0;
 }
 
-int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED) 
+int receivePacket(unsigned char A_EXPECTED, unsigned char C_EXPECTED) 
 {
     enum state enum_state = START;
     
@@ -207,13 +207,12 @@ int receivePacket(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED)
     return 0; 
 }
 
-int receivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char C_EXPECTED, unsigned char A_TO_SEND, unsigned char C_TO_SEND)
+int receivePacketRetransmission(unsigned char A_EXPECTED, unsigned char C_EXPECTED, unsigned char A_TO_SEND, unsigned char C_TO_SEND)
 {
     enum state enum_state = START;
     (void)signal(SIGALRM, alarmHandler);
-    if(send_packet_command(fd, A_TO_SEND, C_TO_SEND)) return -1;
+    if(send_packet_command(A_TO_SEND, C_TO_SEND)) return -1;
     alarm(connectionParameters.timeout); 
-
     while (enum_state != STOP && alarmCount <= connectionParameters.nRetransmissions)
     {
         unsigned char byte = 0;
@@ -262,11 +261,15 @@ int receivePacketRetransmission(int fd, unsigned char A_EXPECTED, unsigned char 
         if(alarmEnabled)
         {
             alarmEnabled = FALSE;
-            if(send_packet_command(fd, A_TO_SEND, C_TO_SEND)) return -1;
-            alarm(connectionParameters.timeout);
+            if (alarmCount <= connectionParameters.nRetransmissions) {
+                if(send_packet_command(A_TO_SEND, C_TO_SEND)) return -1;
+                alarm(connectionParameters.timeout);
+            }
             enum_state = START;
         }
     }
+
+    alarmDisable();
     
     return -1;
 }
@@ -277,14 +280,14 @@ int llopen(LinkLayer connectionParametersApp)
 
     memcpy(&connectionParameters, &connectionParametersApp, sizeof(connectionParametersApp));
 
-    fd = connectFD(connectionParameters);
-    if(fd < 0) return -1;
+    if (connectFD(connectionParameters) == -1)
+        return -1;
 
     if(connectionParameters.role == LlTx){
         struct timeval temp_start, temp_end;
         gettimeofday(&temp_start, NULL);
 
-        if(receivePacketRetransmission(fd, A_SEND, C_UA, A_SEND, C_SET)) return -1;
+        if(receivePacketRetransmission(A_SEND, C_UA, A_SEND, C_SET)) return -1;
 
         statistics.nFrames++;
 
@@ -295,13 +298,13 @@ int llopen(LinkLayer connectionParametersApp)
         printf("Connection established\n");
     }
     if(connectionParameters.role == LlRx){
-        if(receivePacket(fd, A_SEND, C_SET)) return -1;
+        if(receivePacket(A_SEND, C_SET)) return -1;
         statistics.nFrames++;
         statistics.bytes_read += 5;
-        if(send_packet_command(fd, A_SEND, C_UA)) return -1;
+        if(send_packet_command(A_SEND, C_UA)) return -1;
         printf("Connection established\n");
     }
-    return 1;
+    return 0;
 }
 
 void print_answer(const unsigned char *answer, int n)
@@ -361,7 +364,6 @@ int llwrite(const unsigned char *buf, int bufSize)
     for(size_t i = 0; i < bufSize; i++) bcc2 ^=  buf[i];
     trama[newSize + 4] = bcc2; 
     if(bcc2 == FLAG){
-        printf("BCC2 == FLAG\n");
         trama[newSize + 4] = ESC;
         newSize++;
         trama[newSize + 4] = ESC_FLAG;
@@ -456,15 +458,21 @@ int llwrite(const unsigned char *buf, int bufSize)
         if(alarmEnabled)
         {
             alarmEnabled = FALSE;
-            if(write(fd, trama, (newSize + 6)) < 0)
-            {
-                perror("Error write send command");
-                return -1;
+
+            if (alarmCount <= connectionParameters.nRetransmissions) {
+                if(write(fd, trama, (newSize + 6)) < 0)
+                {
+                    perror("Error write send command");
+                    return -1;
+                }
+                alarm(connectionParameters.timeout);
             }
-            alarm(connectionParameters.timeout);
+
             enum_state = START;
         }
     }
+
+    alarmDisable();
 
     return -1;
 }
@@ -506,7 +514,7 @@ int llread(unsigned char *packet)
     {
         unsigned char byte = 0;
         int bytes;
-        if((bytes = read(fd, &byte, sizeof(byte))) < 0)
+        if((bytes = read(fd,&byte, sizeof(byte))) < 0)
         {
             perror("Error read DISC command");
             return -1;
@@ -559,7 +567,7 @@ int llread(unsigned char *packet)
                         A_respons = A_RECV;
                     } 
 
-                    if (send_packet_command(fd, A_respons, C_respons)) return -1;
+                    if (send_packet_command(A_respons, C_respons)) return -1;
 
                     enum_state = START;
 
@@ -598,7 +606,7 @@ void printStatistics()
 
         printf("\nTime taken to download file: %f seconds\n", get_time_difference(statistics.start, end));
 
-        printf("\nnAverage size of a frame: %ld bytes per frame\n", statistics.bytes_read / statistics.nFrames);
+        printf("\nAverage size of a frame: %ld bytes per frame\n", statistics.bytes_read / statistics.nFrames);
     }
 
     else {
@@ -622,7 +630,8 @@ int llclose(int showStatistics)
 
         gettimeofday(&temp_start, NULL);
 
-        if(receivePacketRetransmission(fd, A_SEND, C_DISC, A_SEND, C_DISC)) return -1;
+        if(receivePacketRetransmission(A_SEND, C_DISC, A_SEND, C_DISC))
+            return disconnectFD();
 
         statistics.nFrames++;
         gettimeofday(&temp_end, NULL);
@@ -630,24 +639,23 @@ int llclose(int showStatistics)
         statistics.time_send_control += get_time_difference(temp_start, temp_end);
         statistics.nFrames++;
 
-        if(send_packet_command(fd, A_SEND, C_UA)) return -1;
+        if(send_packet_command(A_SEND, C_UA)) return disconnectFD();
         printf("Disconnected\n");
     }
     if(connectionParameters.role == LlRx)
     {
-        if(receivePacket(fd, A_SEND, C_DISC)) return -1;
+        if(receivePacket(A_SEND, C_DISC)) return disconnectFD();
         statistics.nFrames++;
         statistics.bytes_read += 5;
 
         // Mudar para send_packet_command como o stor tinha dito na aula?
-        if(receivePacketRetransmission(fd, A_SEND, C_UA, A_SEND, C_DISC)) return -1;
+        if(receivePacketRetransmission(A_SEND, C_UA, A_SEND, C_DISC)) return disconnectFD();
         statistics.nFrames++;           // Retirar este linha se se mudar em cima para send_packet_command
         statistics.bytes_read += 5;   // Retirar este linha se se mudar em cima para send_packet_command
 
         printf("Disconnected\n");
     }
 
-    if(disconnectFD(fd)) return -1;
     if(showStatistics) printStatistics();
-    return 1;
+    return disconnectFD();
 }

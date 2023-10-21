@@ -22,7 +22,16 @@ enum state{
     RECV_END
 };
 
+typedef struct
+{
+    size_t file_size;
+    char * file_name;
+    size_t bytesRead;
+} FileProps;
+
 enum state stateReceive = RECV_START;
+FileProps fileProps = {0, "", 0};
+
 
 int sendPacketData(size_t nBytes, unsigned char *data) 
 {
@@ -118,10 +127,13 @@ unsigned char * readPacketData(unsigned char *buff, size_t *newSize)
 }
 
 // Ciclo for com numero de TLVs, switch para saber que TLV é que é, retornar erro se T > 1 ou T < 0 (?)
-int readPacketControl(unsigned char * buff, size_t * file_size, char * file_name)
+int readPacketControl(unsigned char * buff)
 {   
-    if (buff == NULL || file_size == NULL || file_name == NULL) return -1;
+    if (buff == NULL) return -1;
     size_t indx = 0;
+
+    char * file_name = malloc(MAX_FILENAME);
+    if(file_name == NULL) return -1;
 
     if(buff[indx] == C_START) stateReceive = RECV_CONT;
     else if(buff[indx] == C_END) stateReceive = RECV_END;
@@ -133,7 +145,7 @@ int readPacketControl(unsigned char * buff, size_t * file_size, char * file_name
     unsigned char * V1 = malloc(L1);
     if(V1 == NULL) return -1;
     memcpy(V1, buff + indx, L1); indx += L1;
-    *file_size = uchartoi(L1, V1);
+    size_t file_size = uchartoi(L1, V1);
     free(V1);
 
     if(buff[indx++] != T_FILENAME) return -1;
@@ -141,6 +153,20 @@ int readPacketControl(unsigned char * buff, size_t * file_size, char * file_name
     memcpy(file_name, buff + indx, L2);
     file_name[L2] = '\0';
 
+    if(buff[0] == C_START){
+        fileProps.file_size = file_size;
+        fileProps.file_name = file_name;
+    }
+    if(buff[0] == C_END){
+        if (fileProps.file_size != fileProps.bytesRead) {
+            perror("Number of bytes read doesn't match size of file\n");
+        }
+        if(strcmp(fileProps.file_name, file_name)){
+            perror("Names of file given in the start and end packets don't match\n");
+        }
+    }
+    
+    free(file_name);
     return 0;
 }
 
@@ -166,6 +192,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     if (llopen(connectionParametersApp) == -1) {
         perror("Link layer error: Failed to open the connection.");
+        llclose(0);
         return;
     }
     
@@ -174,12 +201,15 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         unsigned char *buffer = (unsigned char *) malloc(MAX_PAYLOAD_SIZE + 20);
         if(buffer == NULL) {
             perror("Memory allocation error at buffer creation.");
+            llclose(0);
             return;
         }
 
         FILE* file = fopen(filename, "rb");
         if(file == NULL) {
             perror("File error: Unable to open the file for reading.");
+            fclose(file);
+            llclose(0);
             return;
         }
 
@@ -189,6 +219,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         if(sendPacketControl(C_START, filename, file_size) == -1) {
             perror("Transmission error: Failed to send the START packet control.");
+            fclose(file);
+            llclose(0);
             return;
         }
 
@@ -196,16 +228,18 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             size_t sended_bytes = 0;
             sended_bytes = sendPacketData(bytesRead, buffer);
             
-            // Uncomment for testing
-            //sleep(1); 
             if(sended_bytes == -1){
                 perror("Transmission error: Failed to send the DATA packet control.");
+                fclose(file);
+                llclose(0);
                 return;
             }
         }
 
         if(sendPacketControl(C_END, filename, file_size) == -1){
             perror("Transmission error: Failed to send the END packet control.");
+            fclose(file);
+            llclose(0);
             return;
         }
 
@@ -213,11 +247,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     } 
     
     if (connectionParametersApp.role == LlRx) {
-        char * file_name = malloc(MAX_FILENAME);
+        
         unsigned char * buf = malloc(MAX_PAYLOAD_SIZE + 20);
         unsigned char * packet = malloc(MAX_PAYLOAD_SIZE + 20);
-        if(file_name == NULL || buf == NULL || packet == NULL){
+        if(buf == NULL || packet == NULL){
             perror("Initialization error: One or more buffers pointers are NULL.");
+            llclose(0);
             return;
         }
 
@@ -225,31 +260,40 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         FILE *file = fopen(filename, "wb");
         if(file == NULL) {
             perror("File error: Unable to open the file for writing.");
+            fclose(file);
+            llclose(0);
             return;
         }
 
-        size_t file_size = 0;
         size_t bytes_readed = 0;
         
         while(stateReceive != RECV_END){
             bytes_readed = llread(buf);
+
             if(bytes_readed == -1) {
                 perror("Link layer error: Failed to read from the link.");
-                break;
+                fclose(file);
+                llclose(0);
+                return;
             }
             
             if(buf[0] == C_START || buf[0] == C_END){
-                if(readPacketControl(buf, &file_size, file_name) == -1) {
+                if(readPacketControl(buf) == -1) {
                     perror("Packet error: Failed to read control packet.");
-                    break;;
+                    fclose(file);
+                    llclose(0);
+                    return;
                 }
             }else if(buf[0] == DATA){
                 packet = readPacketData(buf, &bytes_readed);
                 if(packet == NULL) {
                     perror("Packet error: Failed to read data packet.");
-                    break;
+                    fclose(file);
+                    llclose(0);
+                    return;
                 }
                 fwrite(packet, 1, bytes_readed, file);
+                fileProps.bytesRead += bytes_readed;
             }
         }
 

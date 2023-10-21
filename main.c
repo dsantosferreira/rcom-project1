@@ -41,27 +41,6 @@ int main(int argc, char *argv[])
            filename);
 
     applicationLayer(serialPort, role, BAUDRATE, N_TRIES, TIMEOUT, filename);
-    
-
-    // FILE *file = NULL;
-    // unsigned char *buffer = (unsigned char *)malloc(1000);
-    // size_t bytesRead = 0;
-
-    // if (strcmp(role, "tx") == 0) {
-    //     file = fopen(filename, "rb");
-    //     while ((bytesRead = fread(buffer, 1, 1000, file))) {
-    //         sleep(1);
-    //         llwrite(buffer, bytesRead);
-    //     }
-    // } else {
-    //     file = fopen(filename, "w");
-    //     unsigned char *packet = (unsigned char *) malloc(1000 + 100);
-    //     while ((bytesRead = llread(packet))) {
-    //         fwrite(packet, 1, bytesRead, file);
-    //         if (bytesRead < 1000) break;
-    //     }
-    // }
-
 
     return 0;
 }
