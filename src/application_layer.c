@@ -41,8 +41,9 @@ int sendPacketData(size_t nBytes, unsigned char *data)
     if(packet == NULL) return -1;
     
     packet[0] = DATA;
-    packet[1] = nBytes / 256;
-    packet[2] = nBytes % 256;
+    packet[1] = nBytes >> 8;
+    packet[2] = nBytes & 0xFF;
+
     memcpy(packet + 3, data, nBytes);
 
     int result = llwrite(packet, nBytes + 3);
@@ -76,16 +77,15 @@ unsigned char * itouchar(size_t value, unsigned char *size)
 
 size_t uchartoi (unsigned char n, unsigned char * numbers)
 {
-    if(numbers == NULL) return 0; // TODO: check later
-    int value = 0;
-    int power = 1;
+    if(numbers == NULL) return 0;
+    size_t value = 0;
+    size_t power = 1;
     for(int i = 0; i < n; i++, power <<= 8){
         value += numbers[i] * power;
     }
-    return (size_t) value;
+    return value;
 }
 
-// C TLV TLV ; file_size = L0 * 256^0 + L1 * 256^1 + L2 * 256^2....
 int sendPacketControl(unsigned char C, const char * filename, size_t file_size)
 {
     if(filename == NULL) return -1;
@@ -96,7 +96,10 @@ int sendPacketControl(unsigned char C, const char * filename, size_t file_size)
 
     unsigned char L2 = (unsigned char) strlen(filename);
     unsigned char *packet = (unsigned char *) malloc(5 + L1 + L2);
-    if(packet == NULL) return -1;
+    if(packet == NULL) {
+        free(V1);
+        return -1;
+    }
 
     size_t indx = 0;
     packet[indx++] = C;
@@ -137,7 +140,10 @@ int readPacketControl(unsigned char * buff)
 
     if(buff[indx] == C_START) stateReceive = RECV_CONT;
     else if(buff[indx] == C_END) stateReceive = RECV_END;
-    else return -1;
+    else {
+        free(file_name);
+        return -1;
+    }
 
     indx++;
     if (buff[indx++] != T_FILESIZE) return -1;
@@ -209,6 +215,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         if(file == NULL) {
             perror("File error: Unable to open the file for reading.");
             fclose(file);
+            free(buffer);
             llclose(0);
             return;
         }

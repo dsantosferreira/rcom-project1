@@ -13,6 +13,7 @@
 
 #include "link_layer.h"
 
+// TODO: O transmissor ao retransmitir uma trama depois de reject manda A_SND ou A_RCV?
 
 // MISC
 #define BAUDRATE B38400
@@ -21,7 +22,6 @@
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 1
 #define FRAME_SIZE 5
 
 #define FLAG        0x7E
@@ -78,9 +78,9 @@ double get_time_difference(struct timeval ti, struct timeval tf) {
 
 int connectFD(LinkLayer connectionParametersApp)
 {
-    if(connectionParametersApp.serialPort == NULL) return -1;
+    if (connectionParametersApp.serialPort[0] == '\0') return -1;
+    
     fd = open(connectionParametersApp.serialPort, O_RDWR | O_NOCTTY);
-
     if (fd < 0)
     {
         perror(connectionParametersApp.serialPort);
@@ -105,9 +105,8 @@ int connectFD(LinkLayer connectionParametersApp)
 
     newtio.c_lflag = 0;
 
-    // TODO: Check these values for transmiter and receiver. Maybe pass the timeout as a parameter for VTIME?
-    newtio.c_cc[VTIME] = 40; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 10 * connectionParameters.timeout;
+    newtio.c_cc[VMIN] = 0;
 
     tcflush(fd, TCIOFLUSH);
 
@@ -124,7 +123,6 @@ int connectFD(LinkLayer connectionParametersApp)
 
 int disconnectFD()
 {
-    printf("CALL DISC FD\n");
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
     {
         perror("tcsetattr");
@@ -300,17 +298,11 @@ int llopen(LinkLayer connectionParametersApp)
     if(connectionParameters.role == LlRx){
         if(receivePacket(A_SEND, C_SET)) return -1;
         statistics.nFrames++;
-        statistics.bytes_read += 5;
+        statistics.bytes_read += FRAME_SIZE;
         if(send_packet_command(A_SEND, C_UA)) return -1;
         printf("Connection established\n");
     }
     return 0;
-}
-
-void print_answer(const unsigned char *answer, int n)
-{
-    for(int i = 0; i < n; i++) 
-        printf("buf[%d] = 0x%02X\n", i, answer[i]);
 }
 
 const unsigned char * byteStuffing(const unsigned char *buf, int bufSize, int *newSize)
@@ -351,7 +343,10 @@ int llwrite(const unsigned char *buf, int bufSize)
     if(newBuf == NULL) return -1;
     printf("Bytes sent: %d\n", newSize);
     unsigned char *trama = (unsigned char *) malloc(newSize + 6);
-    if(trama == NULL) return -1;
+    if(trama == NULL){
+        free((unsigned char *) newBuf);
+        return -1;
+    } 
 
     trama[0] = FLAG;
     trama[1] = A_SEND;
@@ -382,6 +377,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     if(write(fd, trama, (newSize + 6)) < 0)
     {
+        free(trama);
         perror("Error write send command");
         return -1;
     }
@@ -394,6 +390,7 @@ int llwrite(const unsigned char *buf, int bufSize)
         int bytes;
         if((bytes = read(fd, &byte, sizeof(byte))) < 0)
         {
+            free(trama);
             perror("Error read command");
             return -1;
         }
@@ -437,9 +434,9 @@ int llwrite(const unsigned char *buf, int bufSize)
 
         if(enum_state == STOP) 
         {
-            if(C_received == REJ0 || C_received == REJ1){ // timerCounter-- dá-se reset ao alarm?
+            if(C_received == REJ0 || C_received == REJ1){
                 alarmEnabled = TRUE;
-                alarmCount = 0; // Perguntar se isto está certo
+                alarmCount = 0; // TODO: Perguntar se isto está certo
                 printf("Received reject; Second try.\n");
             }
             if(C_received == RR0 || C_received == RR1) {
@@ -451,6 +448,7 @@ int llwrite(const unsigned char *buf, int bufSize)
                 alarmDisable();
                 C_Ns = 1 - C_Ns;
                 statistics.nFrames++;
+                free(trama);
                 return bufSize;
             }
         }
@@ -473,43 +471,42 @@ int llwrite(const unsigned char *buf, int bufSize)
     }
 
     alarmDisable();
+    free(trama);
 
     return -1;
 }
 
 int byteDestuffing(unsigned char *buf, int bufSize, int *newSize, unsigned char *bcc2_received)
 {
-    if(buf == NULL || newSize == NULL) return -1;
+    if (buf == NULL || newSize == NULL) return -1;
+    if (bufSize < 1) return 0;
 
-    unsigned char *result = (unsigned char *) malloc(bufSize);
-    if(result == NULL) return -1;
-    size_t j = 0; // index of result array
+    unsigned char *read = buf;           // Pointer for reading from buf
+    unsigned char *write = buf;          // Pointer for writing to buf
 
-    for(size_t i = 0; i < bufSize; i++){
-        if(buf[i] != ESC) result[j++] = buf[i]; 
-        else{
-            if(i + 1 == bufSize){ // caso se ultimo byte era ESC
-                result[j++] = buf[i]; 
-                break;
+    while (read < buf + bufSize) {
+        if (*read != ESC) {
+            *write++ = *read++;
+        } else {
+            if (*(read + 1) == ESC_FLAG) {
+                *write++ = FLAG;
+            } else if (*(read + 1) == ESC_ESC) {
+                *write++ = ESC;
             }
-            if(buf[i + 1] == ESC_FLAG) {result[j++] = FLAG; i++;}
-            else if(buf[i + 1] == ESC_ESC) {result[j++] = ESC; i++;}
+            read += 2;
         }
     }
-    
-    *bcc2_received = result[j - 1];
-    *newSize = (int) (j - 1); 
-    result = realloc(result, j - 1);
-    if (result == NULL) return -1;
-    memcpy(buf, result, j - 1);
+
+    *bcc2_received = *(write - 1);
+    *newSize = write - buf - 1;
     return 0;
 }
 
 int llread(unsigned char *packet)
 {
     enum state enum_state = START;
-    unsigned char C_received = 0; // o valor C recebido de trama.
-    size_t pkt_indx = 0; // o index atual de escrita na packet.
+    unsigned char C_received = 0;
+    size_t pkt_indx = 0;
     while (enum_state != STOP)
     {
         unsigned char byte = 0;
@@ -545,9 +542,8 @@ int llread(unsigned char *packet)
                 else if(byte == FLAG) enum_state = FLAG_RCV;
                 else enum_state = START;
                 break;
-            case DATA: // se for FLAG passa para BCC_OK
+            case DATA: 
                 if(byte == FLAG){
-                    enum_state = STOP;
                     int newSize = 0;
                     unsigned char bcc2_received = 0;
                     
@@ -579,7 +575,7 @@ int llread(unsigned char *packet)
                         statistics.bytes_read += newSize + 6;
                         statistics.nFrames++;
                         return newSize;
-                    } 
+                    }
                     printf("Received duplicate\n");
                 } else packet[pkt_indx++] = byte;
                 
@@ -646,14 +642,17 @@ int llclose(int showStatistics)
     {
         if(receivePacket(A_SEND, C_DISC)) return disconnectFD();
         statistics.nFrames++;
-        statistics.bytes_read += 5;
+        statistics.bytes_read += FRAME_SIZE;
 
         // Mudar para send_packet_command como o stor tinha dito na aula?
         if(receivePacketRetransmission(A_SEND, C_UA, A_SEND, C_DISC)) return disconnectFD();
         statistics.nFrames++;           // Retirar este linha se se mudar em cima para send_packet_command
-        statistics.bytes_read += 5;   // Retirar este linha se se mudar em cima para send_packet_command
+        statistics.bytes_read += FRAME_SIZE;   // Retirar este linha se se mudar em cima para send_packet_command
 
         printf("Disconnected\n");
+        /* TODO: Perguntar ao stor se é suposto ficarmos à espera de UA, e de retransmitir
+        if(send_packet_command(A_SEND, C_DISC)) return disconnectFD();
+        */
     }
 
     if(showStatistics) printStatistics();
