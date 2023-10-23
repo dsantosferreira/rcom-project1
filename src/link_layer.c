@@ -565,7 +565,7 @@ int llread(unsigned char *packet)
                         }
                         else {
                             C_respons = (C_received == C_INF0)? REJ0 : REJ1;
-                            A_respons = A_RECV;
+                            A_respons = A_SEND;
                         }
                     } 
 
@@ -632,7 +632,7 @@ int llclose(int showStatistics)
 
         gettimeofday(&temp_start, NULL);
 
-        if(receivePacketRetransmission(A_SEND, C_DISC, A_SEND, C_DISC))
+        if(receivePacketRetransmission(A_RECV, C_DISC, A_SEND, C_DISC))
             return disconnectFD();
 
         statistics.nFrames++;
@@ -641,7 +641,7 @@ int llclose(int showStatistics)
         statistics.time_send_control += get_time_difference(temp_start, temp_end);
         statistics.nFrames++;
 
-        if(send_packet_command(A_SEND, C_UA)) return disconnectFD();
+        if(send_packet_command(A_RECV, C_UA)) return disconnectFD();
         printf("Disconnected\n");
     }
     if(connectionParameters.role == LlRx)
@@ -651,7 +651,7 @@ int llclose(int showStatistics)
         statistics.bytes_read += FRAME_SIZE;
 
         // Mudar para send_packet_command como o stor tinha dito na aula?
-        if(receivePacketRetransmission(A_SEND, C_UA, A_SEND, C_DISC)) return disconnectFD();
+        if(receivePacketRetransmission(A_RECV, C_UA, A_RECV, C_DISC)) return disconnectFD();
         statistics.nFrames++;           // Retirar este linha se se mudar em cima para send_packet_command
         statistics.bytes_read += FRAME_SIZE;   // Retirar este linha se se mudar em cima para send_packet_command
 
