@@ -559,8 +559,14 @@ int llread(unsigned char *packet)
                         A_respons = A_SEND;
                     }
                     else {
-                        C_respons = (C_received == C_INF0)? REJ0 : REJ1;
-                        A_respons = A_RECV;
+                        if ((C_Nr == 0 && C_received == C_INF1) || (C_Nr == 1 && C_received == C_INF0)) {
+                            C_respons = (C_received == C_INF0)? RR1 : RR0;
+                            A_respons = A_SEND;
+                        }
+                        else {
+                            C_respons = (C_received == C_INF0)? REJ0 : REJ1;
+                            A_respons = A_RECV;
+                        }
                     } 
 
                     if (send_packet_command(A_respons, C_respons)) return -1;
