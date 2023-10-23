@@ -200,7 +200,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     if (llopen(connectionParametersApp) == -1) {
         perror("Link layer error: Failed to open the connection.");
-        llclose(0);
+        llclose(FALSE);
         return;
     }
     
@@ -209,7 +209,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         unsigned char *buffer = (unsigned char *) malloc(MAX_PAYLOAD_SIZE + 20);
         if(buffer == NULL) {
             perror("Memory allocation error at buffer creation.");
-            llclose(0);
+            llclose(FALSE);
             return;
         }
 
@@ -218,7 +218,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             perror("File error: Unable to open the file for reading.");
             fclose(file);
             free(buffer);
-            llclose(0);
+            llclose(FALSE);
             return;
         }
 
@@ -229,7 +229,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         if(sendPacketControl(C_START, filename, file_size) == -1) {
             perror("Transmission error: Failed to send the START packet control.");
             fclose(file);
-            llclose(0);
+            llclose(FALSE);
             return;
         }
 
@@ -240,7 +240,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             if(sended_bytes == -1){
                 perror("Transmission error: Failed to send the DATA packet control.");
                 fclose(file);
-                llclose(0);
+                llclose(FALSE);
                 return;
             }
         }
@@ -248,7 +248,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         if(sendPacketControl(C_END, filename, file_size) == -1){
             perror("Transmission error: Failed to send the END packet control.");
             fclose(file);
-            llclose(0);
+            llclose(FALSE);
             return;
         }
 
@@ -261,7 +261,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         unsigned char * packet = malloc(MAX_PAYLOAD_SIZE + 20);
         if(buf == NULL || packet == NULL){
             perror("Initialization error: One or more buffers pointers are NULL.");
-            llclose(0);
+            llclose(FALSE);
             return;
         }
 
@@ -273,7 +273,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         if(file == NULL) {
             perror("File error: Unable to open the file for writing.");
             fclose(file);
-            llclose(0);
+            llclose(FALSE);
             return;
         }
 
@@ -285,7 +285,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             if(bytes_readed == -1) {
                 perror("Link layer error: Failed to read from the link.");
                 fclose(file);
-                llclose(0);
+                llclose(FALSE);
                 return;
             }
             
@@ -293,7 +293,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 if(readPacketControl(buf) == -1) {
                     perror("Packet error: Failed to read control packet.");
                     fclose(file);
-                    llclose(0);
+                    llclose(FALSE);
                     return;
                 }
             }else if(buf[0] == DATA){
@@ -301,7 +301,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 if(packet == NULL) {
                     perror("Packet error: Failed to read data packet.");
                     fclose(file);
-                    llclose(0);
+                    llclose(FALSE);
                     return;
                 }
                 fwrite(packet, 1, bytes_readed, file);
@@ -313,7 +313,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     }
 
 
-    if (llclose(1) == -1) {
+    if (llclose(TRUE) == -1) {
         perror("Link layer error: Failed to close the connection.");
         return;
     }
