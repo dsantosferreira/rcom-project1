@@ -162,6 +162,7 @@ int readPacketControl(unsigned char * buff)
     if(buff[0] == C_START){
         fileProps.file_size = file_size;
         fileProps.file_name = file_name;
+        printf("[INFO] Started receiving file: '%s'\n", file_name);
     }
     if(buff[0] == C_END){
         if (fileProps.file_size != fileProps.bytesRead) {
@@ -170,6 +171,7 @@ int readPacketControl(unsigned char * buff)
         if(strcmp(fileProps.file_name, file_name)){
             perror("Names of file given in the start and end packets don't match\n");
         }
+        printf("[INFO] Finished receiving file: '%s'\n", file_name);
     }
     
     free(file_name);
@@ -265,6 +267,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         
         FILE *file = fopen(filename, "wb");
+        // To save the file with the same name as the one sent, use:
+        // FILE *file = fopen(fileProps.file_name, "wb");
+        
         if(file == NULL) {
             perror("File error: Unable to open the file for writing.");
             fclose(file);
