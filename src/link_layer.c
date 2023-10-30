@@ -513,7 +513,7 @@ int byteDestuffing(unsigned char *buf, int bufSize, int *newSize, unsigned char 
 
 int llread(unsigned char *packet)
 {
-    usleep(TPROP * 1000);
+    //usleep(TPROP * 1000);
 
     enum state enum_state = START;
     unsigned char C_received = 0;
@@ -601,7 +601,7 @@ int llread(unsigned char *packet)
                         }
                     }
 
-                    usleep(TPROP * 1000);
+                    //usleep(TPROP * 1000);
 
                     if (send_packet_command(A_respons, C_respons)) return -1;
 
@@ -634,6 +634,8 @@ void printStatistics()
     printf("\n======== Statistics ========\n");
 
     if (connectionParameters.role == LlRx) {
+        printf("MAXPAYLOAD: %d\n", MAX_PAYLOAD_SIZE);
+
         float a = TPROP / (MAX_PAYLOAD_SIZE / connectionParameters.baudRate);
 
         float FER = (float) statistics.errorFrames / (statistics.nFrames + statistics.errorFrames);
@@ -658,6 +660,8 @@ void printStatistics()
         printf("\nEficiencia teorica: %f", (1.0 - FER) / (1 + 2*a));
 
         printf("\nEficiencia pratica: %f", FILE_SIZE / get_time_difference(statistics.start, end));
+
+        printf("\nEficiencia pedida %f\n", (FILE_SIZE / get_time_difference(statistics.start, end)) / (float) connectionParameters.baudRate);
     }
 
     else {
