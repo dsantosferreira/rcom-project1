@@ -46,7 +46,8 @@
 // NOTE: only for report statistics
 #define FAKE_BCC1_ERR   10
 #define FAKE_BCC2_ERR   10
-#define TPROP           1
+#define TPROP           500
+#define FILE_SIZE       10968
 
 typedef struct
 {
@@ -302,7 +303,7 @@ int llopen(LinkLayer connectionParametersApp)
 
         printf("Connection established\n");
     }
-    if(connectionParameters.role == LlRx){
+    if(connectionParameters.role == LlRx) {
         srand(time(NULL));
         if(receivePacket(A_SEND, C_SET)) return -1;
         statistics.nFrames++;
@@ -512,15 +513,7 @@ int byteDestuffing(unsigned char *buf, int bufSize, int *newSize, unsigned char 
 
 int llread(unsigned char *packet)
 {
-    (void)signal(SIGALRM, alarmHandler);
-
-    alarm(TPROP);
-
-    while (!alarmEnabled) {
-        
-    }
-
-    alarmDisable();
+    usleep(TPROP * 1000);
 
     enum state enum_state = START;
     unsigned char C_received = 0;
@@ -592,8 +585,8 @@ int llread(unsigned char *packet)
 
                     enum_state = START;
 
-                    int error_in_bcc1 = rand() % FAKE_BCC1_ERR;
-                    int error_in_bcc2 = rand() % FAKE_BCC2_ERR;
+                    int error_in_bcc1 = rand() % (100 / FAKE_BCC1_ERR);
+                    int error_in_bcc2 = rand() % (100 / FAKE_BCC2_ERR);
 
                     // NOTE: code only for report
                     if ((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)) {
@@ -607,6 +600,8 @@ int llread(unsigned char *packet)
                             A_respons = A_SEND;
                         }
                     }
+
+                    usleep(TPROP * 1000);
 
                     if (send_packet_command(A_respons, C_respons)) return -1;
 
@@ -639,6 +634,10 @@ void printStatistics()
     printf("\n======== Statistics ========\n");
 
     if (connectionParameters.role == LlRx) {
+        float a = TPROP / (MAX_PAYLOAD_SIZE / connectionParameters.baudRate);
+
+        float FER = (float) statistics.errorFrames / (statistics.nFrames + statistics.errorFrames);
+
         printf("\nNumber of bytes received (after destuffing): %lu\n", statistics.bytes_read);
 
         printf("\nNumber of good frames received: %d frames\n", statistics.nFrames);
@@ -654,7 +653,11 @@ void printStatistics()
 
         printf("\nBaudrate real: %d\n", connectionParameters.baudRate);
 
-        printf("\n FER: %f\n", (float) statistics.errorFrames / (statistics.nFrames + statistics.errorFrames));
+        printf("\nFER: %f\n", FER);
+
+        printf("\nEficiencia teorica: %f", (1.0 - FER) / (1 + 2*a));
+
+        printf("\nEficiencia pratica: %f", FILE_SIZE / get_time_difference(statistics.start, end));
     }
 
     else {
