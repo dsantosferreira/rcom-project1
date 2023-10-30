@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include "link_layer.h"
 
@@ -42,10 +43,14 @@
 #define REJ0        0x01
 #define REJ1        0x81
 
+#define FAKE_BCC1_ERR   10
+#define FAKE_BCC2_ERR   10
+
 typedef struct
 {
     size_t bytes_read;          // Number of bytes read before any destuffing
     unsigned int nFrames;       // Number of good frames sent/received
+    unsigned int errorFrames;
     unsigned int frames_size;   // Size of good frames sent
     double time_send_control;   // Time spent on sending control frames
     double time_send_data;      // Time spent on sending data frames
@@ -64,7 +69,7 @@ enum state{
 };
 
 LinkLayer connectionParameters;
-Statistics statistics = {0, 0, 0, 0.0, 0.0};
+Statistics statistics = {0, 0, 0, 0, 0.0, 0.0};
 struct termios oldtio;
 int alarmEnabled = FALSE;
 int alarmCount = 0;
@@ -296,6 +301,7 @@ int llopen(LinkLayer connectionParametersApp)
         printf("Connection established\n");
     }
     if(connectionParameters.role == LlRx){
+        srand(time(NULL));
         if(receivePacket(A_SEND, C_SET)) return -1;
         statistics.nFrames++;
         statistics.bytes_read += FRAME_SIZE;
@@ -538,12 +544,15 @@ int llread(unsigned char *packet)
                 else enum_state = START;
                 break;
             case C_RCV:
-                if(byte == (C_received ^ A_SEND)) enum_state = DATA; // need to check A_SEND
-                else if(byte == FLAG) enum_state = FLAG_RCV;
-                else enum_state = START;
+                if (byte == (C_received ^ A_SEND)) enum_state = DATA; // need to check A_SEND
+                else {
+                    statistics.errorFrames++;
+                    if(byte == FLAG) enum_state = FLAG_RCV;
+                    else enum_state = START;
+                }
                 break;
             case DATA: 
-                if(byte == FLAG){
+                if(byte == FLAG) {
                     int newSize = 0;
                     unsigned char bcc2_received = 0;
                     
@@ -564,16 +573,35 @@ int llread(unsigned char *packet)
                             A_respons = A_SEND;
                         }
                         else {
-                            C_respons = (C_received == C_INF0)? REJ0 : REJ1;
+                            C_respons = (C_received == C_INF0) ? REJ0 : REJ1;
                             A_respons = A_SEND;
                         }
-                    } 
-
-                    if (send_packet_command(A_respons, C_respons)) return -1;
+                    }
 
                     enum_state = START;
 
-                    if (C_respons == REJ0 || C_respons == REJ1) break;
+                    int error_in_bcc1 = rand() % FAKE_BCC1_ERR;
+                    int error_in_bcc2 = rand() % FAKE_BCC2_ERR;
+
+                    // NOTE: code only for report
+                    if ((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)) {
+                        if (error_in_bcc1 == 0) {
+                            statistics.errorFrames++;
+                            break;
+                        }
+
+                        if (error_in_bcc2 == 0) {
+                            C_respons = (C_received == C_INF0) ? REJ0 : REJ1;
+                            A_respons = A_SEND;
+                        }
+                    }
+
+                    if (send_packet_command(A_respons, C_respons)) return -1;
+
+                    if (C_respons == REJ0 || C_respons == REJ1) {
+                        statistics.errorFrames++;
+                        break;
+                    }
 
                     if ((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)){
                         C_Nr = 1 - C_Nr;
@@ -613,6 +641,8 @@ void printStatistics()
         printf("\nDébito recebido (bits/s): %f\n", (float) statistics.bytes_read * 8.0 / get_time_difference(statistics.start, end));
 
         printf("\nBaudrate real: %d\n", connectionParameters.baudRate);
+
+        printf("\n FER: %f\n", (float) statistics.errorFrames / statistics.nFrames);
     }
 
     else {
