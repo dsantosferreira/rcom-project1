@@ -43,8 +43,10 @@
 #define REJ0        0x01
 #define REJ1        0x81
 
+// NOTE: only for report statistics
 #define FAKE_BCC1_ERR   10
 #define FAKE_BCC2_ERR   10
+#define TPROP           1
 
 typedef struct
 {
@@ -510,6 +512,16 @@ int byteDestuffing(unsigned char *buf, int bufSize, int *newSize, unsigned char 
 
 int llread(unsigned char *packet)
 {
+    (void)signal(SIGALRM, alarmHandler);
+
+    alarm(TPROP);
+
+    while (!alarmEnabled) {
+        
+    }
+
+    alarmDisable();
+
     enum state enum_state = START;
     unsigned char C_received = 0;
     size_t pkt_indx = 0;
@@ -642,7 +654,7 @@ void printStatistics()
 
         printf("\nBaudrate real: %d\n", connectionParameters.baudRate);
 
-        printf("\n FER: %f\n", (float) statistics.errorFrames / statistics.nFrames);
+        printf("\n FER: %f\n", (float) statistics.errorFrames / (statistics.nFrames + statistics.errorFrames));
     }
 
     else {
