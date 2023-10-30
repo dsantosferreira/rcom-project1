@@ -609,6 +609,10 @@ void printStatistics()
         printf("\nTime taken to download file: %f seconds\n", get_time_difference(statistics.start, end));
 
         printf("\nAverage size of a frame: %ld bytes per frame\n", statistics.bytes_read / statistics.nFrames);
+
+        printf("\nDébito recebido (bits/s): %f\n", (float) statistics.bytes_read * 8.0 / get_time_difference(statistics.start, end));
+
+        printf("\nBaudrate real: %d\n", connectionParameters.baudRate);
     }
 
     else {
