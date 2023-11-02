@@ -44,8 +44,8 @@
 #define REJ1        0x81
 
 // NOTE: only for report statistics
-#define FAKE_BCC1_ERR   10
-#define FAKE_BCC2_ERR   10
+#define FAKE_BCC1_ERR   10.0
+#define FAKE_BCC2_ERR   10.0
 #define TPROP           500
 #define FILE_SIZE       10968
 
@@ -513,7 +513,7 @@ int byteDestuffing(unsigned char *buf, int bufSize, int *newSize, unsigned char 
 
 int llread(unsigned char *packet)
 {
-    //usleep(TPROP * 1000);
+    usleep(TPROP * 1000);
 
     enum state enum_state = START;
     unsigned char C_received = 0;
@@ -585,23 +585,23 @@ int llread(unsigned char *packet)
 
                     enum_state = START;
 
-                    int error_in_bcc1 = rand() % (100 / FAKE_BCC1_ERR);
-                    int error_in_bcc2 = rand() % (100 / FAKE_BCC2_ERR);
+                    int error_in_bcc1 = rand() % 100;
+                    int error_in_bcc2 = rand() % 100;
 
                     // NOTE: code only for report
                     if ((C_Nr == 0 && C_received == C_INF0) || (C_Nr == 1 && C_received == C_INF1)) {
-                        if (error_in_bcc1 == 0) {
+                        if (error_in_bcc1 <= FAKE_BCC1_ERR - 1) {
                             statistics.errorFrames++;
                             break;
                         }
 
-                        if (error_in_bcc2 == 0) {
+                        if (error_in_bcc2 <= FAKE_BCC2_ERR - 1) {
                             C_respons = (C_received == C_INF0) ? REJ0 : REJ1;
                             A_respons = A_SEND;
                         }
                     }
 
-                    //usleep(TPROP * 1000);
+                    usleep(TPROP * 1000);
 
                     if (send_packet_command(A_respons, C_respons)) return -1;
 
@@ -636,9 +636,15 @@ void printStatistics()
     if (connectionParameters.role == LlRx) {
         printf("MAXPAYLOAD: %d\n", MAX_PAYLOAD_SIZE);
 
-        float a = TPROP / (MAX_PAYLOAD_SIZE / connectionParameters.baudRate);
+        float a = (float) ((float) TPROP / 1000) / (float) ((float) MAX_PAYLOAD_SIZE * 8.0 / (float) connectionParameters.baudRate);
 
-        float FER = (float) statistics.errorFrames / (statistics.nFrames + statistics.errorFrames);
+        float REAL_FER = (float) statistics.errorFrames / (statistics.nFrames + statistics.errorFrames);
+
+        float EXPECTED_FER = FAKE_BCC1_ERR/100.0 + (100.0 - FAKE_BCC1_ERR)/100.0 * FAKE_BCC2_ERR/100.0;
+
+        printf("EXPECTED FER: %f\n", EXPECTED_FER);
+
+        printf("EXPECTED A: %f\n", a);
 
         printf("\nNumber of bytes received (after destuffing): %lu\n", statistics.bytes_read);
 
@@ -655,13 +661,13 @@ void printStatistics()
 
         printf("\nBaudrate real: %d\n", connectionParameters.baudRate);
 
-        printf("\nFER: %f\n", FER);
+        printf("\nFER: %f\n", REAL_FER);
 
-        printf("\nEficiencia teorica: %f", (1.0 - FER) / (1 + 2*a));
+        printf("\nEficiencia teorica: %f", (1.0 - EXPECTED_FER) / (1 + 2*a));
 
-        printf("\nEficiencia pratica: %f", FILE_SIZE / get_time_difference(statistics.start, end));
+        printf("\nEficiencia pratica: %f", (FILE_SIZE * 8.0) / get_time_difference(statistics.start, end));
 
-        printf("\nEficiencia pedida %f\n", (FILE_SIZE / get_time_difference(statistics.start, end)) / (float) connectionParameters.baudRate);
+        printf("\nEficiencia pedida %f\n", ((float) ((float) FILE_SIZE * 8.0) / get_time_difference(statistics.start, end)) / (float) connectionParameters.baudRate);
     }
 
     else {
