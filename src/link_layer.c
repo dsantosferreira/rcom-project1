@@ -17,7 +17,6 @@
 // TODO: O transmissor ao retransmitir uma trama depois de reject manda A_SND ou A_RCV?
 
 // MISC
-#define BAUDRATE B38400
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
 #define FALSE 0
@@ -80,6 +79,28 @@ int fd;
 unsigned char C_Ns = 0; // Ns
 unsigned char C_Nr = 0; // Nr (o valor que ele espera de receber)
 
+int get_boudrate(int boudrate){
+    switch (boudrate)
+    {
+    case 50 : return B50;
+    case 75: return B75;
+    case 110: return B110;
+    case 134: return B134;
+    case 150: return B150;
+    case 200: return B200;
+    case 300: return B300;
+    case 600: return B600;
+    case 1200: return B1200;
+    case 1800: return B1800;
+    case 2400: return B2400;
+    case 4800: return B4800;
+    case 9600: return B9600;
+    case 19200: return B19200;
+    case 38400: return B38400;
+    default: return B9600;
+    }
+}
+
 double get_time_difference(struct timeval ti, struct timeval tf) {
     return (tf.tv_sec - ti.tv_sec) + (tf.tv_usec - ti.tv_usec) / 1e6;
 }
@@ -107,7 +128,7 @@ int connectFD(LinkLayer connectionParametersApp)
     // Clear struct for new port settings
     memset(&newtio, 0, sizeof(newtio));
 
-    newtio.c_cflag = connectionParametersApp.baudRate | CS8 | CLOCAL | CREAD;
+    newtio.c_cflag = (get_boudrate(connectionParametersApp.baudRate)) | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
 
@@ -715,9 +736,9 @@ int llclose(int showStatistics)
         statistics.bytes_read += FRAME_SIZE;   // Retirar este linha se se mudar em cima para send_packet_command
 
         printf("Disconnected\n");
-        /* TODO: Perguntar ao stor se é suposto ficarmos à espera de UA, e de retransmitir
-        if(send_packet_command(A_SEND, C_DISC)) return disconnectFD();
-        */
+        // TODO: Perguntar ao stor se é suposto ficarmos à espera de UA, e de retransmitir
+        // if(send_packet_command(A_RECV, C_DISC)) return disconnectFD();
+        
     }
 
     if(showStatistics) printStatistics();
