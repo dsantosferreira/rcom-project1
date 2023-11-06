@@ -66,7 +66,6 @@ enum state{
     C_RCV,
     BCC_OK,
     DATA,
-    STUFF,
     STOP
 };
 
