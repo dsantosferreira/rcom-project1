@@ -14,7 +14,6 @@
 
 #include "link_layer.h"
 
-// TODO: O transmissor ao retransmitir uma trama depois de reject manda A_SND ou A_RCV?
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -465,7 +464,7 @@ int llwrite(const unsigned char *buf, int bufSize)
         {
             if(C_received == REJ0 || C_received == REJ1){
                 alarmEnabled = TRUE;
-                alarmCount = 0; // TODO: Perguntar se isto está certo
+                alarmCount = 0; 
                 printf("Received reject; Second try.\n");
             }
             if(C_received == RR0 || C_received == RR1) {
@@ -569,7 +568,7 @@ int llread(unsigned char *packet)
                 else enum_state = START;
                 break;
             case C_RCV:
-                if (byte == (C_received ^ A_SEND)) enum_state = DATA; // need to check A_SEND
+                if (byte == (C_received ^ A_SEND)) enum_state = DATA; 
                 else {
                     statistics.errorFrames++;
                     if(byte == FLAG) enum_state = FLAG_RCV;
@@ -658,13 +657,7 @@ void printStatistics()
 
         float a = (float) ((float) TPROP / 1000) / (float) ((float) MAX_PAYLOAD_SIZE * 8.0 / (float) connectionParameters.baudRate);
 
-        float REAL_FER = (float) statistics.errorFrames / (statistics.nFrames + statistics.errorFrames);
-
         float EXPECTED_FER = FAKE_BCC1_ERR/100.0 + (100.0 - FAKE_BCC1_ERR)/100.0 * FAKE_BCC2_ERR/100.0;
-
-        printf("EXPECTED FER: %f\n", EXPECTED_FER);
-
-        printf("EXPECTED A: %f\n", a);
 
         printf("\nNumber of bytes received (after destuffing): %lu\n", statistics.bytes_read);
 
@@ -679,13 +672,7 @@ void printStatistics()
 
         printf("\nDébito recebido (bits/s): %f\n", (float) statistics.bytes_read * 8.0 / get_time_difference(statistics.start, end));
 
-        printf("\nBaudrate real: %d\n", connectionParameters.baudRate);
-
-        printf("\nFER: %f\n", REAL_FER);
-
         printf("\nEficiencia teorica: %f", (1.0 - EXPECTED_FER) / (1 + 2*a));
-
-        printf("\nEficiencia pratica: %f", (FILE_SIZE * 8.0) / get_time_difference(statistics.start, end));
 
         printf("\nEficiencia pedida %f\n", ((float) ((float) FILE_SIZE * 8.0) / get_time_difference(statistics.start, end)) / (float) connectionParameters.baudRate);
     }
@@ -729,13 +716,11 @@ int llclose(int showStatistics)
         statistics.nFrames++;
         statistics.bytes_read += FRAME_SIZE;
 
-        // Mudar para send_packet_command como o stor tinha dito na aula?
         if(receivePacketRetransmission(A_RECV, C_UA, A_RECV, C_DISC)) return disconnectFD();
         statistics.nFrames++;           // Retirar este linha se se mudar em cima para send_packet_command
         statistics.bytes_read += FRAME_SIZE;   // Retirar este linha se se mudar em cima para send_packet_command
 
         printf("Disconnected\n");
-        // TODO: Perguntar ao stor se é suposto ficarmos à espera de UA, e de retransmitir
         // if(send_packet_command(A_RECV, C_DISC)) return disconnectFD();
         
     }

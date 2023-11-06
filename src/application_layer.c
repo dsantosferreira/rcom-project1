@@ -108,7 +108,7 @@ int sendPacketControl(unsigned char C, const char * filename, size_t file_size)
     memcpy(packet + indx, V1, L1); indx += L1;
     packet[indx++] = T_FILENAME;
     packet[indx++] = L2;
-    memcpy(packet + indx, filename, L2); indx += L2;  // check later. for cycle if it doesnt work
+    memcpy(packet + indx, filename, L2); indx += L2;  
 
     free(V1);
     
@@ -129,7 +129,6 @@ unsigned char * readPacketData(unsigned char *buff, size_t *newSize)
     return buff + 3;
 }
 
-// Ciclo for com numero de TLVs, switch para saber que TLV é que é, retornar erro se T > 1 ou T < 0 (?)
 int readPacketControl(unsigned char * buff)
 {   
     if (buff == NULL) return -1;
