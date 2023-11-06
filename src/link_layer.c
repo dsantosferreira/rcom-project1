@@ -42,9 +42,9 @@
 #define REJ1        0x81
 
 // NOTE: only for report statistics
-#define FAKE_BCC1_ERR   10.0
-#define FAKE_BCC2_ERR   10.0
-#define TPROP           500
+#define FAKE_BCC1_ERR   0.0             // %
+#define FAKE_BCC2_ERR   0.0             // %
+#define TPROP           0               // ms
 #define FILE_SIZE       10968
 
 typedef struct
@@ -653,7 +653,6 @@ void printStatistics()
     printf("\n======== Statistics ========\n");
 
     if (connectionParameters.role == LlRx) {
-        printf("MAXPAYLOAD: %d\n", MAX_PAYLOAD_SIZE);
 
         float a = (float) ((float) TPROP / 1000) / (float) ((float) MAX_PAYLOAD_SIZE * 8.0 / (float) connectionParameters.baudRate);
 
