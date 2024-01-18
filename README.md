@@ -3,6 +3,13 @@ INSTRUCTIONS FOR SERIAL PORT PROTOCOL
 
 This folder contains the base code of the serial port protocol.
 
+## Contributors and Grade
+
+* [Daniel Ferreira](https://github.com/dsantosferreira)
+* [Mansur Mustafin](https://github.com/Mansur-Mustafin) 
+
+Grade: 20/20
+
 Project Structure
 -----------------
 
